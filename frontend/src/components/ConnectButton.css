@@ -1,0 +1,48 @@
+.connect-button-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wallet-icon {
+  display: flex;
+  align-items: center;
+  color: #3b82f6;
+}
+
+.wallet-address {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #e5e7eb;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.wallet-kit-button {
+  /* Styling for the Stellar Wallets Kit button will be handled by the kit */
+}
+
+@media (max-width: 640px) {
+  .connect-button-container {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .wallet-info {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .wallet-kit-button {
+    width: 100%;
+  }
+}

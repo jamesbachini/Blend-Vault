@@ -1,0 +1,149 @@
+.balance-display {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.balance-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.balance-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.balance-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.balance-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: white;
+}
+
+.balance-icon--wallet {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.balance-icon--vault {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.balance-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.balance-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+}
+
+.balance-amount {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #f9fafb;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-currency {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.balance-empty {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #4b5563;
+}
+
+.balance-hint {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.balance-hint::before {
+  content: '●';
+  font-size: 0.5rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.skeleton-loader {
+  width: 120px;
+  height: 2.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 768px) {
+  .balance-display {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-card {
+    padding: 1.25rem;
+  }
+
+  .balance-amount {
+    font-size: 1.5rem;
+  }
+}

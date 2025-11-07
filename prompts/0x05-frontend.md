@@ -5,6 +5,7 @@
 0x05-03> Generate the complete, production-ready source code for a frontend application that allows users to interact with the blend vault in contracts/src/lib.rs
 
 I've deployed the contract to Stellar mainnet at this Contract ID:
+CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN
 
 Create a frontend for this contract which provides a simple, elegant user interface enabling the user to approve spend of USDC, deposit it into the vault, check both USDC in wallet balance and their balance of USDC in the pool (this might be tricky because I don't want to show their shares I want to know how much USDC they deposited + the interest earnt), withdraw funds back to their wallet.
 

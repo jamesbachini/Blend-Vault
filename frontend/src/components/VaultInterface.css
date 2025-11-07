@@ -1,0 +1,158 @@
+.vault-interface {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.connect-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.connect-prompt svg {
+  margin-bottom: 1.5rem;
+  color: #4b5563;
+}
+
+.connect-prompt h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #e5e7eb;
+  margin-bottom: 0.5rem;
+}
+
+.connect-prompt p {
+  font-size: 1rem;
+  color: #6b7280;
+}
+
+.vault-actions {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+}
+
+.action-section {
+  margin-bottom: 2rem;
+}
+
+.action-section:last-child {
+  margin-bottom: 0;
+}
+
+.action-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f9fafb;
+  margin-bottom: 0.5rem;
+}
+
+.action-description {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin-bottom: 1.5rem;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.amount-input {
+  width: 100%;
+  padding: 1rem 5rem 1rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #f9fafb;
+  font-size: 1.125rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.amount-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.amount-input::placeholder {
+  color: #6b7280;
+}
+
+/* Remove spinner arrows from number input */
+.amount-input::-webkit-outer-spin-button,
+.amount-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.amount-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.max-button {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.5rem 1rem;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  color: #3b82f6;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.max-button:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.button-group {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.button-group .action-button {
+  flex: 1;
+}
+
+.action-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  margin: 2rem 0;
+}
+
+@media (max-width: 768px) {
+  .vault-actions {
+    padding: 1.5rem;
+  }
+
+  .action-title {
+    font-size: 1.125rem;
+  }
+
+  .amount-input {
+    font-size: 1rem;
+    padding: 0.875rem 4.5rem 0.875rem 0.875rem;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+}
