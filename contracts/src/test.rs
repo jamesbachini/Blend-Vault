@@ -22,6 +22,21 @@ impl MockBlendPool {
         to: Address,
         requests: Vec<Request>,
     ) -> Positions {
+        Self::process_requests(env, to, requests)
+    }
+
+    pub fn submit_with_allowance(
+        env: Env,
+        _from: Address,
+        _spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        // Same implementation as submit - in the real contract this would handle allowances
+        Self::process_requests(env, to, requests)
+    }
+
+    fn process_requests(env: Env, to: Address, requests: Vec<Request>) -> Positions {
         // Get current positions from storage or create new
         let mut positions: Positions = env
             .storage()

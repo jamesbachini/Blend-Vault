@@ -12,7 +12,7 @@ This guide covers deploying the Blend Vault frontend to production.
 
 No environment variables are required. All configuration is hardcoded for security:
 
-- **Vault Contract**: `CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN`
+- **Vault Contract**: `CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA`
 - **USDC Contract**: `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`
 - **Network**: Stellar Mainnet
 

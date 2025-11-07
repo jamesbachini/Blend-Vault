@@ -26,7 +26,12 @@
       "Bash(soroban --version:*)",
       "Bash(stellar contract build:*)",
       "Bash(stellar contract deploy:*)",
-      "Bash(stellar keys address:*)"
+      "Bash(stellar keys address:*)",
+      "WebFetch(domain:jsr.io)",
+      "WebFetch(domain:soroban.stellar.org)",
+      "WebFetch(domain:developers.stellar.org)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

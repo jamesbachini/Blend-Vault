@@ -59,7 +59,7 @@ npm run preview
 
 ## Contract Addresses
 
-- **Vault Contract**: `CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN`
+- **Vault Contract**: `CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA`
 - **USDC Token**: `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`
 - **Network**: Stellar Mainnet
 
@@ -154,4 +154,4 @@ MIT
 
 - [Blend Protocol](https://blend.capital)
 - [Stellar Network](https://stellar.org)
-- [View Contract on Stellar Expert](https://stellar.expert/explorer/public/contract/CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN)
+- [View Contract on Stellar Expert](https://stellar.expert/explorer/public/contract/CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA)

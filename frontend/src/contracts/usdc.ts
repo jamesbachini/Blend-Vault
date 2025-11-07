@@ -68,28 +68,35 @@ export async function getAllowance(ownerAddress: string): Promise<bigint> {
  * Approve vault contract to spend USDC
  */
 export async function approve(amount: bigint, ownerAddress: string): Promise<string> {
-  const { address } = await StellarWalletsKit.getAddress();
+  if (!ownerAddress || ownerAddress.trim() === '') {
+    throw new Error('Invalid owner address: address is empty');
+  }
 
   // Set expiration ledger (approximately 30 days from now at ~5 seconds per ledger)
   const currentLedger = (await sorobanServer.getLatestLedger()).sequence;
   const expirationLedger = currentLedger + 518400; // ~30 days
 
   const tx = await buildAndSimulateTransaction(
-    address,
+    ownerAddress,
     usdcContract,
     'approve',
     [
-      addressToScVal(address),
+      addressToScVal(ownerAddress),
       addressToScVal(VAULT_CONTRACT_ID),
       numberToI128(amount),
       StellarSdk.nativeToScVal(expirationLedger, { type: 'u32' }),
     ]
   );
 
-  const { signedTxXdr } = await StellarWalletsKit.signTransaction(tx.toXDR(), {
+  // Convert to base64 XDR explicitly
+  const txXdr = tx.toEnvelope().toXDR('base64');
+
+  const signResult = await StellarWalletsKit.signTransaction(txXdr, {
     networkPassphrase: NETWORK_PASSPHRASE,
-    address,
+    address: ownerAddress,
   });
+
+  const signedTxXdr = signResult.signedTxXdr || signResult;
 
   return await submitTransaction(signedTxXdr);
 }

@@ -80,7 +80,7 @@ function App() {
             </svg>
             <div className="logo-text">
               <h1>Blend Vault</h1>
-              <p>Earn yield on Stellar</p>
+              <p>Max Yield On USDC</p>
             </div>
           </div>
 
@@ -91,7 +91,7 @@ function App() {
       <main className="app-main">
         <div className="main-content">
           <div className="intro-section">
-            <h2>USDC Vault powered by Blend Protocol</h2>
+            <h2>USDC Auto-Compounding Vault</h2>
             <p>
               Deposit your USDC to earn yield automatically through the Blend Protocol's Yield Box
               Pool. Your deposits are supplied to Blend and earn interest continuously.
@@ -105,23 +105,21 @@ function App() {
       <footer className="app-footer">
         <div className="footer-content">
           <div className="footer-links">
-            <a
-              href="https://stellar.expert/explorer/public/contract/CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href="https://stellar.expert/explorer/public/contract/CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA" target="_blank">
               View Contract
             </a>
-            <a href="https://blend.capital" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/jamesbachini/Blend-Vault" target="_blank">
+              Github
+            </a>
+            <a href="https://blend.capital" target="_blank">
               Blend Protocol
             </a>
-            <a href="https://stellar.org" target="_blank" rel="noopener noreferrer">
+            <a href="https://stellar.org" target="_blank">
               Stellar Network
             </a>
           </div>
           <p className="footer-disclaimer">
-            This is a decentralized application. Always verify contract addresses and do your own
-            research before depositing funds.
+            This decentralized application is for experimentation purposes only and should not be used as an investment tool. Code is unaudited, any funds deposited risk being lost and unrecoverable.
           </p>
         </div>
       </footer>

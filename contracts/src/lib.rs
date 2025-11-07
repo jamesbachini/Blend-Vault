@@ -105,6 +105,14 @@ pub trait BlendPoolInterface {
         requests: Vec<Request>,
     ) -> Positions;
 
+    fn submit_with_allowance(
+        env: Env,
+        from: Address,
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions;
+
     fn get_positions(env: Env, address: Address) -> Positions;
 
     fn claim(env: Env, from: Address, reserve_token_ids: Vec<u32>, to: Address) -> i128;
@@ -475,8 +483,8 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        // Submit the supply request to Blend
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
+        // Submit the supply request to Blend using submit_with_allowance (V2 function for smart contracts)
+        pool_client.submit_with_allowance(&vault_address, &vault_address, &vault_address, &requests);
 
         // Mint shares to receiver
         Base::mint(e, &receiver, shares);

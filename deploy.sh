@@ -27,8 +27,8 @@ DECIMALS_OFFSET=0  # Same decimals as USDC (7)
 WASM_PATH="target/wasm32v1-none/release/blend_vault.wasm"
 
 # Step 1: Clean previous builds
-echo -e "${YELLOW}Step 1: Cleaning previous builds...${NC}"
-cargo clean
+ echo -e "${YELLOW}Step 1: Cleaning previous builds...${NC}"
+ cargo clean
 
 # Step 2: Build the contract
 echo -e "${YELLOW}Step 2: Building contract for WASM target...${NC}"
@@ -88,12 +88,12 @@ echo "  Comet Pool: $COMET_POOL"
 echo "  Decimals Offset: $DECIMALS_OFFSET"
 echo ""
 
-read -p "Proceed with deployment? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deployment cancelled"
-    exit 0
-fi
+#read -p "Proceed with deployment? (y/N) " -n 1 -r
+#echo
+#if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#    echo "Deployment cancelled"
+#    exit 0
+#fi
 
 # Step 5: Deploy the contract (without initialization)
 echo -e "${YELLOW}Step 5: Deploying contract to $NETWORK (without initialization)...${NC}"

@@ -3,10 +3,10 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 // Mainnet configuration
 export const NETWORK_PASSPHRASE = StellarSdk.Networks.PUBLIC;
 export const HORIZON_URL = 'https://horizon.stellar.org';
-export const SOROBAN_RPC_URL = 'https://soroban-rpc.mainnet.stellar.gateway.fm';
+export const SOROBAN_RPC_URL = 'https://rpc.lightsail.network/';
 
 // Contract addresses
-export const VAULT_CONTRACT_ID = 'CDORATDMBHHTWMAQMAFS2XL76SGRHW5PNMN25SIK4FB4UXYBGXRNRTBN';
+export const VAULT_CONTRACT_ID = 'CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA';
 export const USDC_CONTRACT_ID = 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75'; // Stellar USDC on mainnet
 
 // Initialize Soroban server
@@ -65,17 +65,40 @@ export async function buildAndSimulateTransaction(
 export async function submitTransaction(signedXdr: string): Promise<string> {
   const transaction = StellarSdk.TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
 
-  let response = await sorobanServer.sendTransaction(transaction);
+  let sendResponse = await sorobanServer.sendTransaction(transaction);
+
+  // Store the hash separately since it might not be in the getTransaction response
+  const txHash = sendResponse.hash;
 
   // Poll for transaction status
+  let response = sendResponse;
   while (response.status === 'PENDING' || response.status === 'NOT_FOUND') {
     await new Promise(resolve => setTimeout(resolve, 1000));
-    response = await sorobanServer.getTransaction(response.hash);
+    response = await sorobanServer.getTransaction(txHash);
   }
 
   if (response.status === 'SUCCESS') {
-    return response.hash;
+    return txHash;
   } else {
-    throw new Error(`Transaction failed: ${response.status}`);
+    // Extract detailed error information
+    let errorMessage = `Transaction failed: ${response.status}`;
+
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(response)) {
+      errorMessage += ` - ${response.error}`;
+    }
+
+    // Check for result codes in the response
+    if ('resultXdr' in response && response.resultXdr) {
+      try {
+        const result = StellarSdk.xdr.TransactionResult.fromXDR(response.resultXdr, 'base64');
+        console.error('Transaction result XDR:', result);
+        errorMessage += ` - Result: ${JSON.stringify(result)}`;
+      } catch (e) {
+        console.error('Could not parse result XDR:', e);
+      }
+    }
+
+    console.error('Full error response:', JSON.stringify(response, null, 2));
+    throw new Error(errorMessage);
   }
 }

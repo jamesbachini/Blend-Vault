@@ -98,18 +98,23 @@ export async function convertToShares(assets: bigint, userAddress: string): Prom
  * Deposit USDC into the vault
  */
 export async function deposit(amount: bigint, userAddress: string): Promise<string> {
-  const { address } = await StellarWalletsKit.getAddress();
-
   const tx = await buildAndSimulateTransaction(
-    address,
+    userAddress,
     vaultContract,
     'deposit',
-    [numberToI128(amount), addressToScVal(address)]
+    [
+      numberToI128(amount),
+      addressToScVal(userAddress), // receiver
+      addressToScVal(userAddress), // from
+      addressToScVal(userAddress), // operator
+    ]
   );
 
-  const { signedTxXdr } = await StellarWalletsKit.signTransaction(tx.toXDR(), {
+  const txXdr = tx.toEnvelope().toXDR('base64');
+
+  const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
     networkPassphrase: NETWORK_PASSPHRASE,
-    address,
+    address: userAddress,
   });
 
   return await submitTransaction(signedTxXdr);
@@ -119,18 +124,23 @@ export async function deposit(amount: bigint, userAddress: string): Promise<stri
  * Redeem shares for USDC (withdraw)
  */
 export async function redeem(shares: bigint, userAddress: string): Promise<string> {
-  const { address } = await StellarWalletsKit.getAddress();
-
   const tx = await buildAndSimulateTransaction(
-    address,
+    userAddress,
     vaultContract,
     'redeem',
-    [numberToI128(shares), addressToScVal(address), addressToScVal(address)]
+    [
+      numberToI128(shares),
+      addressToScVal(userAddress), // receiver
+      addressToScVal(userAddress), // owner
+      addressToScVal(userAddress), // operator
+    ]
   );
 
-  const { signedTxXdr } = await StellarWalletsKit.signTransaction(tx.toXDR(), {
+  const txXdr = tx.toEnvelope().toXDR('base64');
+
+  const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
     networkPassphrase: NETWORK_PASSPHRASE,
-    address,
+    address: userAddress,
   });
 
   return await submitTransaction(signedTxXdr);
