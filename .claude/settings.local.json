@@ -10,7 +10,14 @@
       "Bash(cargo clean:*)",
       "Bash(cargo tree:*)",
       "Bash(cargo test:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(chmod:*)",
+      "Bash(if [ -f .gitignore ])",
+      "Bash(then grep -q \"^\\.env$\" .gitignore)",
+      "Bash(.gitignore)",
+      "Bash(else echo \".env\")",
+      "Bash(fi)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
