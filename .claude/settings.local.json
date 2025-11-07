@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(cargo tree -p stellar-tokens)",
+      "Bash(cargo doc:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.openzeppelin.com)",
+      "Bash(cargo clean:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo test:*)",
+      "Bash(rustc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
