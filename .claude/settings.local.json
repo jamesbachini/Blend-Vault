@@ -17,7 +17,16 @@
       "Bash(.gitignore)",
       "Bash(else echo \".env\")",
       "Bash(fi)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(stellar contract invoke:*)",
+      "WebFetch(domain:stellar.expert)",
+      "WebFetch(domain:docs.blend.capital)",
+      "Bash(stellar network ls:*)",
+      "Bash(stellar network add:*)",
+      "Bash(soroban --version:*)",
+      "Bash(stellar contract build:*)",
+      "Bash(stellar contract deploy:*)",
+      "Bash(stellar keys address:*)"
     ],
     "deny": [],
     "ask": []

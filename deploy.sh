@@ -16,15 +16,15 @@ SOURCE_ACCOUNT="${STELLAR_ACCOUNT:-james}"  # Set via environment variable
 
 USDC_ADDRESS="${USDC_ADDRESS:-CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75}"
 BLEND_POOL="${BLEND_POOL:-CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS}"
-USDC_RESERVE_INDEX="${USDC_RESERVE_INDEX:-0}"  # Update with correct index from Blend pool
-BLND_TOKEN="${BLND_TOKEN:-CD25MNVTZDL4Y3XBCPCJXGXATV5WUHHOWMYFF4YBEGU5FCPGMYTVG5JY}"  # BLND token address
-BLND_RESERVE_INDEX="${BLND_RESERVE_INDEX:-0}"  # Update with correct index
-COMET_POOL="${COMET_POOL:-CAS3FL6TLZKDGGSISDBWGGPXT3NRR4DYTZD7YOD3HMYO6LTJUVGRVEAM}"  # Update with Comet pool address for BLND-USDC swaps
+USDC_RESERVE_INDEX="${USDC_RESERVE_INDEX:-1}"  # USDC is at index 1 in Blend pool reserve list
+BLND_TOKEN="${BLND_TOKEN:-CD25MNVTZDL4Y3XBCPCJXGXATV5WUHHOWMYFF4YBEGU5FCPGMYTVG5JY}"
+BLND_RESERVE_INDEX="${BLND_RESERVE_INDEX:-3}"  # reserve_token_id for USDC supply = 1*2+1 = 3
+COMET_POOL="${COMET_POOL:-CAS3FL6TLZKDGGSISDBWGGPXT3NRR4DYTZD7YOD3HMYO6LTJUVGRVEAM}"
 
 DECIMALS_OFFSET=0  # Same decimals as USDC (7)
 
 # WASM output path
-WASM_PATH="target/wasm32-unknown-unknown/release/blend_vault.wasm"
+WASM_PATH="target/wasm32v1-none/release/blend_vault.wasm"
 
 # Step 1: Clean previous builds
 echo -e "${YELLOW}Step 1: Cleaning previous builds...${NC}"
@@ -32,7 +32,7 @@ cargo clean
 
 # Step 2: Build the contract
 echo -e "${YELLOW}Step 2: Building contract for WASM target...${NC}"
-cargo build --release --target wasm32-unknown-unknown
+stellar contract build
 
 # Verify WASM file exists
 if [ ! -f "$WASM_PATH" ]; then
@@ -98,14 +98,20 @@ fi
 # Step 5: Deploy the contract
 echo -e "${YELLOW}Step 5: Deploying contract to $NETWORK...${NC}"
 
+# Set fee as environment variable and as flag
+export STELLAR_FEE=100000000
+
 CONTRACT_ID=$(stellar contract deploy \
     --wasm "$WASM_PATH" \
     --source "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
+    --fee 100000000 \
     2>&1 | tee /dev/tty | tail -n1)
 
-if [ -z "$CONTRACT_ID" ]; then
+# Check if deployment failed
+if [[ "$CONTRACT_ID" == *"error"* ]] || [ -z "$CONTRACT_ID" ]; then
     echo -e "${RED}Error: Deployment failed${NC}"
+    echo "Contract ID output: $CONTRACT_ID"
     exit 1
 fi
 
@@ -119,6 +125,7 @@ stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
+    --fee 1000000 \
     -- \
     initialize \
     --asset "$USDC_ADDRESS" \
