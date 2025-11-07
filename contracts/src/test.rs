@@ -163,11 +163,11 @@ impl<'a> TestFixture<'a> {
         // Deploy mock Comet Pool
         let comet_pool = env.register_contract(None, MockCometPool);
 
-        // Deploy vault contract
+        // Step 1: Deploy vault contract (without initialization)
         let vault = env.register_contract(None, BlendVaultContract);
         let vault_client = BlendVaultContractClient::new(&env, &vault);
 
-        // Initialize vault
+        // Step 2: Initialize vault separately
         vault_client.initialize(
             &usdc_token,
             &0, // decimals_offset
@@ -947,4 +947,108 @@ fn test_depositors_snapshot_no_duplicates() {
     assert_eq!(snapshot.len(), 1);
     // Balance should be the sum of both deposits
     assert_eq!(snapshot.get(fixture.user.clone()).unwrap(), deposit1 + deposit2);
+}
+
+#[test]
+fn test_is_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+    let usdc_client = MockTokenClient::new(&env, &usdc_token);
+    usdc_client.initialize(
+        &admin,
+        &7,
+        &SorobanString::from_str(&env, "USD Coin"),
+        &SorobanString::from_str(&env, "USDC"),
+    );
+
+    let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+    let blnd_client = MockTokenClient::new(&env, &blnd_token);
+    blnd_client.initialize(
+        &admin,
+        &7,
+        &SorobanString::from_str(&env, "Blend Token"),
+        &SorobanString::from_str(&env, "BLND"),
+    );
+
+    let blend_pool = env.register_contract(None, MockBlendPool);
+    let comet_pool = env.register_contract(None, MockCometPool);
+
+    // Deploy vault without initialization
+    let vault = env.register_contract(None, BlendVaultContract);
+    let vault_client = BlendVaultContractClient::new(&env, &vault);
+
+    // Check that it's not initialized
+    assert_eq!(vault_client.is_initialized(), false);
+
+    // Initialize the vault
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
+
+    // Check that it's now initialized
+    assert_eq!(vault_client.is_initialized(), true);
+}
+
+#[test]
+#[should_panic(expected = "Contract is already initialized")]
+fn test_double_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+    let usdc_client = MockTokenClient::new(&env, &usdc_token);
+    usdc_client.initialize(
+        &admin,
+        &7,
+        &SorobanString::from_str(&env, "USD Coin"),
+        &SorobanString::from_str(&env, "USDC"),
+    );
+
+    let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+    let blnd_client = MockTokenClient::new(&env, &blnd_token);
+    blnd_client.initialize(
+        &admin,
+        &7,
+        &SorobanString::from_str(&env, "Blend Token"),
+        &SorobanString::from_str(&env, "BLND"),
+    );
+
+    let blend_pool = env.register_contract(None, MockBlendPool);
+    let comet_pool = env.register_contract(None, MockCometPool);
+
+    // Deploy vault
+    let vault = env.register_contract(None, BlendVaultContract);
+    let vault_client = BlendVaultContractClient::new(&env, &vault);
+
+    // Initialize the vault (first time)
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
+
+    // Try to initialize again (should panic)
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
 }

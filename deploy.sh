@@ -95,17 +95,15 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Step 5: Deploy the contract
-echo -e "${YELLOW}Step 5: Deploying contract to $NETWORK...${NC}"
-
-# Set fee as environment variable and as flag
-export STELLAR_FEE=100000000
+# Step 5: Deploy the contract (without initialization)
+echo -e "${YELLOW}Step 5: Deploying contract to $NETWORK (without initialization)...${NC}"
+echo "The contract will be deployed without any initialization parameters."
+echo "This allows you to inspect the deployment before initializing."
 
 CONTRACT_ID=$(stellar contract deploy \
     --wasm "$WASM_PATH" \
     --source "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
-    --fee 100000000 \
     2>&1 | tee /dev/tty | tail -n1)
 
 # Check if deployment failed
@@ -115,17 +113,36 @@ if [[ "$CONTRACT_ID" == *"error"* ]] || [ -z "$CONTRACT_ID" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ Contract deployed${NC}"
+echo -e "${GREEN}✓ Contract deployed (uninitialized)${NC}"
 echo "Contract ID: $CONTRACT_ID"
+echo ""
+echo "NOTE: The contract is now deployed but NOT initialized."
+echo "You can verify the deployment before proceeding with initialization."
+echo ""
+
+read -p "Proceed with initialization? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Initialization skipped. You can initialize later with:"
+    echo "  stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- initialize \\"
+    echo "    --asset $USDC_ADDRESS \\"
+    echo "    --decimals_offset $DECIMALS_OFFSET \\"
+    echo "    --blend_pool $BLEND_POOL \\"
+    echo "    --usdc_reserve_index $USDC_RESERVE_INDEX \\"
+    echo "    --blnd_token $BLND_TOKEN \\"
+    echo "    --blnd_reserve_index $BLND_RESERVE_INDEX \\"
+    echo "    --comet_pool $COMET_POOL"
+    exit 0
+fi
 
 # Step 6: Initialize the contract
 echo -e "${YELLOW}Step 6: Initializing contract...${NC}"
+echo "NOTE: Initialization can only be done once. Subsequent calls will fail."
 
 stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
-    --fee 1000000 \
     -- \
     initialize \
     --asset "$USDC_ADDRESS" \

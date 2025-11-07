@@ -65,6 +65,7 @@ pub struct CompoundEvent {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
+    Initialized,
     BlendPool,
     USDCReserveIndex,
     BLNDToken,
@@ -127,6 +128,8 @@ pub trait CometPoolInterface {
 impl BlendVaultContract {
     /// Initialize the vault
     ///
+    /// This function can only be called once. Subsequent calls will panic.
+    ///
     /// ### Arguments
     /// * `asset` - The underlying asset address (USDC)
     /// * `decimals_offset` - The decimal offset for share token
@@ -145,6 +148,11 @@ impl BlendVaultContract {
         blnd_reserve_index: u32,
         comet_pool: Address,
     ) {
+        // Check if already initialized
+        if e.storage().instance().has(&DataKey::Initialized) {
+            panic!("Contract is already initialized");
+        }
+
         // Store the Blend pool address and USDC reserve index
         e.storage().instance().set(&DataKey::BlendPool, &blend_pool);
         e.storage()
@@ -170,6 +178,9 @@ impl BlendVaultContract {
             String::from_str(e, "ACV"),
         );
 
+        // Mark as initialized
+        e.storage().instance().set(&DataKey::Initialized, &true);
+
         // Emit initialization event
         InitializedEvent {
             asset,
@@ -177,6 +188,11 @@ impl BlendVaultContract {
             usdc_reserve_index,
         }
         .publish(e);
+    }
+
+    /// Check if the contract has been initialized
+    pub fn is_initialized(e: &Env) -> bool {
+        e.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Get the Blend pool address
