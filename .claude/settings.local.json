@@ -35,7 +35,9 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:stellar.github.io)"
+      "WebFetch(domain:stellar.github.io)",
+      "Bash(stellar keys ls:*)",
+      "Bash(stellar contract install:*)"
     ],
     "deny": [],
     "ask": []

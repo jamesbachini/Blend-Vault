@@ -104,17 +104,7 @@ pub trait BlendPoolInterface {
         to: Address,
         requests: Vec<Request>,
     ) -> Positions;
-
-    fn submit_with_allowance(
-        env: Env,
-        from: Address,
-        spender: Address,
-        to: Address,
-        requests: Vec<Request>,
-    ) -> Positions;
-
     fn get_positions(env: Env, address: Address) -> Positions;
-
     fn claim(env: Env, from: Address, reserve_token_ids: Vec<u32>, to: Address) -> i128;
 }
 
@@ -339,6 +329,7 @@ impl BlendVaultContract {
 
     /// Try to compound rewards, but don't fail if there are no rewards
     /// This is a safety wrapper used before withdrawals
+    #[allow(dead_code)]
     fn try_compound(e: &Env) {
         // Use a Result-like pattern with panic catching via environmental context
         // In Soroban, we can't easily catch panics, so we'll just call compound
@@ -483,8 +474,8 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        // Submit the supply request to Blend using submit_with_allowance (V2 function for smart contracts)
-        pool_client.submit_with_allowance(&vault_address, &vault_address, &vault_address, &requests);
+        // Submit the supply request to Blend (vault already has the USDC)
+        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
 
         // Mint shares to receiver
         Base::mint(e, &receiver, shares);
