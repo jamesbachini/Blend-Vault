@@ -219,7 +219,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     );
   }
 
-  const needsApproval = depositAmount && parseUSDC(depositAmount) > allowance;
+  const needsApproval = !!depositAmount && parseUSDC(depositAmount) > allowance;
 
   return (
     <div className="vault-interface">

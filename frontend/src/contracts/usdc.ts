@@ -28,7 +28,7 @@ export async function getBalance(address: string): Promise<bigint> {
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 
@@ -53,7 +53,7 @@ export async function getAllowance(ownerAddress: string): Promise<bigint> {
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 
@@ -91,12 +91,10 @@ export async function approve(amount: bigint, ownerAddress: string): Promise<str
   // Convert to base64 XDR explicitly
   const txXdr = tx.toEnvelope().toXDR('base64');
 
-  const signResult = await StellarWalletsKit.signTransaction(txXdr, {
+  const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
     networkPassphrase: NETWORK_PASSPHRASE,
     address: ownerAddress,
   });
-
-  const signedTxXdr = signResult.signedTxXdr || signResult;
 
   return await submitTransaction(signedTxXdr);
 }
@@ -115,7 +113,7 @@ export async function getDecimals(userAddress: string): Promise<number> {
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return Number(scValToNumber(result.result.retval));
     }
 

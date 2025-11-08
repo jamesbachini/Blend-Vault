@@ -26,8 +26,11 @@ export async function getShareBalance(userAddress: string): Promise<bigint> {
       ])
     );
 
-    if (result.val) {
-      return scValToNumber(result.val);
+    if (result && result.val) {
+      // In v14, result.val is LedgerEntryData, need to extract ScVal from it
+      const ledgerData = result.val;
+      const scVal = ledgerData.contractData().val();
+      return scValToNumber(scVal);
     }
     return BigInt(0);
   } catch (error) {
@@ -54,7 +57,7 @@ export async function convertToAssets(shares: bigint, userAddress: string): Prom
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 
@@ -83,7 +86,7 @@ export async function convertToShares(assets: bigint, userAddress: string): Prom
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 
@@ -160,7 +163,7 @@ export async function maxDeposit(userAddress: string): Promise<bigint> {
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 
@@ -185,7 +188,7 @@ export async function maxRedeem(userAddress: string): Promise<bigint> {
 
     const result = await sorobanServer.simulateTransaction(tx);
 
-    if (StellarSdk.SorobanRpc.Api.isSimulationSuccess(result) && result.result) {
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
       return scValToNumber(result.result.retval);
     }
 

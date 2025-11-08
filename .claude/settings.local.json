@@ -31,7 +31,11 @@
       "WebFetch(domain:soroban.stellar.org)",
       "WebFetch(domain:developers.stellar.org)",
       "Bash(git checkout:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:stellar.github.io)"
     ],
     "deny": [],
     "ask": []

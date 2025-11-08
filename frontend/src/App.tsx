@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { StellarWalletsKit } from '@creit-tech/stellar-wallets-kit/sdk';
 import { SwkAppDarkTheme, KitEventType } from '@creit-tech/stellar-wallets-kit/types';
