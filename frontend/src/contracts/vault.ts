@@ -39,7 +39,11 @@ export async function getShareBalance(userAddress: string): Promise<bigint> {
 }
 
 /**
- * Convert shares to USDC assets
+ * Convert shares to USDC assets using the correct formula
+ *
+ * Note: The vault's convert_to_assets uses the audited OpenZeppelin implementation,
+ * but it calculates based on the vault's local USDC balance (which is 0 since we
+ * store everything in Blend). This function uses the correct total_assets from Blend.
  */
 export async function convertToAssets(shares: bigint, userAddress: string): Promise<bigint> {
   if (shares === BigInt(0)) {
@@ -47,20 +51,41 @@ export async function convertToAssets(shares: bigint, userAddress: string): Prom
   }
 
   try {
-    const tx = await buildAndSimulateTransaction(
+    // Get total supply of shares
+    const totalSupplyTx = await buildAndSimulateTransaction(
       userAddress,
       vaultContract,
-      'convert_to_assets',
-      [numberToI128(shares)]
+      'total_supply',
+      []
     );
+    const totalSupplyResult = await sorobanServer.simulateTransaction(totalSupplyTx);
 
-    const result = await sorobanServer.simulateTransaction(tx);
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(totalSupplyResult) || !totalSupplyResult.result) {
+      throw new Error('Failed to get total supply');
+    }
+    const totalSupply = scValToNumber(totalSupplyResult.result.retval);
 
-    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
-      return scValToNumber(result.result.retval);
+    if (totalSupply === BigInt(0)) {
+      return BigInt(0);
     }
 
-    throw new Error('Failed to convert shares to assets');
+    // Get total assets (from Blend pool)
+    const totalAssetsTx = await buildAndSimulateTransaction(
+      userAddress,
+      vaultContract,
+      'total_assets',
+      []
+    );
+    const totalAssetsResult = await sorobanServer.simulateTransaction(totalAssetsTx);
+
+    if (!StellarSdk.rpc.Api.isSimulationSuccess(totalAssetsResult) || !totalAssetsResult.result) {
+      throw new Error('Failed to get total assets');
+    }
+    const totalAssets = scValToNumber(totalAssetsResult.result.retval);
+
+    // Formula: assets = shares * total_assets / total_supply
+    const assets = (shares * totalAssets) / totalSupply;
+    return assets;
   } catch (error) {
     console.error('Error converting to assets:', error);
     return BigInt(0);

@@ -39,7 +39,12 @@
       "Bash(stellar contract install:*)",
       "Bash(cargo update:*)",
       "Bash(RUST_BACKTRACE=full cargo test:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(node test-vault-state.js:*)",
+      "Bash(node test-decimals.js:*)",
+      "Bash(node test-blend-position.js:*)",
+      "Bash(node diagnose-shares.js:*)",
+      "Bash(node:*)"
     ],
     "deny": [
       "Bash(stellar contract deploy:*)"
