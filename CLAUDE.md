@@ -229,6 +229,9 @@ When adding tests, note:
 - USDC uses 7 decimals on Stellar
 - Test share price changes as yield accrues in Blend pool
 
+Tests should be run with:
+cargo test --target x86_64-unknown-linux-gnu
+
 **Example Test Pattern**:
 ```rust
 let fixture = TestFixture::new();

@@ -37,7 +37,9 @@
       "WebFetch(domain:stellar.github.io)",
       "Bash(stellar keys ls:*)",
       "Bash(stellar contract install:*)",
-      "Bash(cargo update:*)"
+      "Bash(cargo update:*)",
+      "Bash(RUST_BACKTRACE=full cargo test:*)",
+      "Bash(grep:*)"
     ],
     "deny": [
       "Bash(stellar contract deploy:*)"

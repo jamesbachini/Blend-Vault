@@ -629,12 +629,26 @@ impl FungibleVault for BlendVaultContract {
 
         pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
 
+        // Transfer USDC from vault to receiver (do this before burning to maintain auth context)
+        let token_client = token::TokenClient::new(e, &asset);
+
+        // Authorize the vault to transfer USDC to receiver
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (vault_address.clone(), receiver.clone(), assets).into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
+
+        token_client.transfer(&vault_address, &receiver, &assets);
+
         // Burn shares from owner
         Base::burn(e, &owner, shares);
-
-        // Transfer USDC from vault to receiver
-        let token_client = token::TokenClient::new(e, &asset);
-        token_client.transfer(&vault_address, &receiver, &assets);
 
         // Emit withdraw event (ERC-4626 standard)
         WithdrawEvent {
@@ -683,12 +697,26 @@ impl FungibleVault for BlendVaultContract {
 
         pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
 
+        // Transfer USDC from vault to receiver (do this before burning to maintain auth context)
+        let token_client = token::TokenClient::new(e, &asset);
+
+        // Authorize the vault to transfer USDC to receiver
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (vault_address.clone(), receiver.clone(), assets).into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
+
+        token_client.transfer(&vault_address, &receiver, &assets);
+
         // Burn shares from owner
         Base::burn(e, &owner, shares);
-
-        // Transfer USDC from vault to receiver
-        let token_client = token::TokenClient::new(e, &asset);
-        token_client.transfer(&vault_address, &receiver, &assets);
 
         // Emit redeem event (ERC-4626 standard)
         RedeemEvent {
