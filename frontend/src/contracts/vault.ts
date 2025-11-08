@@ -148,7 +148,35 @@ export async function deposit(amount: bigint, userAddress: string): Promise<stri
 }
 
 /**
- * Redeem shares for USDC (withdraw)
+ * Withdraw USDC assets from the vault
+ * This is the recommended way to withdraw - just specify the asset amount
+ */
+export async function withdraw(assets: bigint, userAddress: string): Promise<string> {
+  const tx = await buildAndSimulateTransaction(
+    userAddress,
+    vaultContract,
+    'withdraw',
+    [
+      numberToI128(assets),
+      addressToScVal(userAddress), // receiver
+      addressToScVal(userAddress), // owner
+      addressToScVal(userAddress), // operator
+    ]
+  );
+
+  const txXdr = tx.toEnvelope().toXDR('base64');
+
+  const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
+    networkPassphrase: NETWORK_PASSPHRASE,
+    address: userAddress,
+  });
+
+  return await submitTransaction(signedTxXdr);
+}
+
+/**
+ * Redeem shares for USDC (alternative to withdraw)
+ * Only use this if you want to redeem a specific number of shares
  */
 export async function redeem(shares: bigint, userAddress: string): Promise<string> {
   const tx = await buildAndSimulateTransaction(
@@ -171,6 +199,56 @@ export async function redeem(shares: bigint, userAddress: string): Promise<strin
   });
 
   return await submitTransaction(signedTxXdr);
+}
+
+/**
+ * Get total supply of vault shares
+ */
+export async function getTotalSupply(userAddress: string): Promise<bigint> {
+  try {
+    const tx = await buildAndSimulateTransaction(
+      userAddress,
+      vaultContract,
+      'total_supply',
+      []
+    );
+
+    const result = await sorobanServer.simulateTransaction(tx);
+
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
+      return scValToNumber(result.result.retval);
+    }
+
+    return BigInt(0);
+  } catch (error) {
+    console.error('Error getting total supply:', error);
+    return BigInt(0);
+  }
+}
+
+/**
+ * Get total assets in the vault (from Blend)
+ */
+export async function getTotalAssets(userAddress: string): Promise<bigint> {
+  try {
+    const tx = await buildAndSimulateTransaction(
+      userAddress,
+      vaultContract,
+      'total_assets',
+      []
+    );
+
+    const result = await sorobanServer.simulateTransaction(tx);
+
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
+      return scValToNumber(result.result.retval);
+    }
+
+    return BigInt(0);
+  } catch (error) {
+    console.error('Error getting total assets:', error);
+    return BigInt(0);
+  }
 }
 
 /**

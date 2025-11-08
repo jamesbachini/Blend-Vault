@@ -6,16 +6,16 @@
 }
 
 .balance-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: #191B1F;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: 1.5rem;
-  transition: all 0.2s ease;
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
 }
 
 .balance-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: #24382d;
+  border-color: rgba(54, 176, 74, 0.3);
 }
 
 .balance-header {
@@ -36,17 +36,18 @@
 }
 
 .balance-icon--wallet {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: #36B04A;
 }
 
 .balance-icon--vault {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: #32ac4a;
 }
 
 .balance-label {
   font-size: 0.875rem;
+  font-family: "DM Sans", Roboto;
   font-weight: 500;
-  color: #9ca3af;
+  color: #979797;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -60,27 +61,32 @@
 
 .balance-amount {
   font-size: 1.875rem;
-  font-weight: 700;
-  color: #f9fafb;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #FFFFFF;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-currency {
   font-size: 1rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #979797;
 }
 
 .balance-empty {
   font-size: 1.875rem;
-  font-weight: 700;
-  color: #4b5563;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #979797;
 }
 
 .balance-hint {
   margin-top: 0.75rem;
   font-size: 0.75rem;
-  color: #10b981;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #36B04A;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -95,7 +101,7 @@
 .skeleton-loader {
   width: 120px;
   height: 2.5rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   position: relative;
   overflow: hidden;

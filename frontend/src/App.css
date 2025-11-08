@@ -6,19 +6,18 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: "DM Sans", Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0f172a;
-  color: #f9fafb;
+  background: #191B1F;
+  color: #FFFFFF;
 }
 
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: #191B1F;
 }
 
 /* Header */
@@ -26,9 +25,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #212328;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 1rem 0;
 }
 
@@ -44,23 +42,28 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
+}
+
+.logo svg {
+  height: 32px;
+  width: auto;
 }
 
 .logo-text h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 0.125rem;
+  margin: 0px 0px 0px 6px;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  font-size: 1.125rem;
+  line-height: 1.473;
+  color: #FFFFFF;
 }
 
 .logo-text p {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: #979797;
   font-weight: 500;
+  margin: 0px 0px 0px 6px;
 }
 
 /* Main Content */
@@ -84,22 +87,25 @@ body {
 
 .intro-section h2 {
   font-size: 2rem;
-  font-weight: 700;
-  color: #f9fafb;
+  font-weight: 500;
+  color: #FFFFFF;
   margin-bottom: 1rem;
   line-height: 1.2;
+  font-family: "DM Sans", Roboto;
 }
 
 .intro-section p {
-  font-size: 1.125rem;
-  color: #9ca3af;
+  font-size: 1rem;
+  color: #979797;
   line-height: 1.6;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
 }
 
 /* Footer */
 .app-footer {
-  background: rgba(0, 0, 0, 0.2);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #212328;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding: 2rem 1.5rem;
   margin-top: 4rem;
 }
@@ -119,23 +125,26 @@ body {
 }
 
 .footer-links a {
-  color: #9ca3af;
+  color: #979797;
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
-  transition: color 0.2s ease;
+  font-family: "DM Sans", Roboto;
+  transition: color 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
 }
 
 .footer-links a:hover {
-  color: #3b82f6;
+  color: #36B04A;
 }
 
 .footer-disclaimer {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: #979797;
   max-width: 600px;
   margin: 0 auto;
   line-height: 1.5;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
 }
 
 /* Responsive Design */
@@ -203,14 +212,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: #191B1F;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: #212328;
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #36B04A;
 }

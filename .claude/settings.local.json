@@ -44,7 +44,10 @@
       "Bash(node test-decimals.js:*)",
       "Bash(node test-blend-position.js:*)",
       "Bash(node diagnose-shares.js:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(cargo install:*)",
+      "Bash(stellar contract optimize:*)",
+      "WebFetch(domain:mainnet.blend.capital)"
     ],
     "deny": [
       "Bash(stellar contract deploy:*)"

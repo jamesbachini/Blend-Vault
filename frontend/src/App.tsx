@@ -46,20 +46,22 @@ function App() {
         toastOptions={{
           duration: 5000,
           style: {
-            background: '#1f2937',
-            color: '#f9fafb',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: '#212328',
+            color: '#FFFFFF',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            fontFamily: '"DM Sans", Roboto',
+            fontWeight: 500,
           },
           success: {
             iconTheme: {
-              primary: '#10b981',
-              secondary: '#f9fafb',
+              primary: '#36B04A',
+              secondary: '#FFFFFF',
             },
           },
           error: {
             iconTheme: {
-              primary: '#ef4444',
-              secondary: '#f9fafb',
+              primary: '#FF3366',
+              secondary: '#FFFFFF',
             },
           },
         }}
@@ -68,20 +70,10 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="logo">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect width="32" height="32" rx="8" fill="url(#gradient)" />
-              <circle cx="16" cy="16" r="8" stroke="white" strokeWidth="2" fill="none" />
-              <circle cx="16" cy="16" r="4" fill="white" />
-              <defs>
-                <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32">
-                  <stop offset="0%" stopColor="#3b82f6" />
-                  <stop offset="100%" stopColor="#2563eb" />
-                </linearGradient>
-              </defs>
-            </svg>
+            <img src="/vault-icon.svg" alt="Blend Vault" style={{ height: '32px', width: 'auto' }} />
             <div className="logo-text">
-              <h1>Blend Vault</h1>
-              <p>Max Yield On USDC</p>
+              <h1>BLEND VAULT</h1>
+              <p>USDC YIELD STRATEGY</p>
             </div>
           </div>
 

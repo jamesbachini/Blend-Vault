@@ -161,10 +161,82 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
 
     setIsWithdrawing(true);
     try {
-      // Convert USDC amount to shares
-      const shares = await VaultContract.convertToShares(amount, userAddress);
+      // Get fresh data from chain RIGHT before withdrawal
+      const userShares = await VaultContract.getShareBalance(userAddress);
 
-      const txHash = await VaultContract.redeem(shares, userAddress);
+      if (userShares === 0n) {
+        toast.error('You have no shares to withdraw');
+        setIsWithdrawing(false);
+        return;
+      }
+
+      // Get vault's total state to verify calculations
+      const totalSupply = await VaultContract.getTotalSupply(userAddress);
+      const totalAssets = await VaultContract.getTotalAssets(userAddress);
+
+      console.log('=== Withdrawal Debug ===');
+      console.log('User shares:', userShares.toString(), '(', (Number(userShares) / 10_000_000).toFixed(7), ')');
+      console.log('Total supply:', totalSupply.toString(), '(', (Number(totalSupply) / 10_000_000).toFixed(7), ')');
+      console.log('Total assets:', totalAssets.toString(), '(', (Number(totalAssets) / 10_000_000).toFixed(7), 'USDC)');
+      console.log('Withdrawal amount:', amount.toString(), '(', (Number(amount) / 10_000_000).toFixed(7), 'USDC)');
+
+      // Calculate user's actual asset value
+      const userAssets = (userShares * totalAssets) / totalSupply;
+      console.log('User asset value:', userAssets.toString(), '(', (Number(userAssets) / 10_000_000).toFixed(7), 'USDC)');
+
+      // Check share price using JavaScript numbers to avoid integer overflow
+      const sharePriceFloat = Number(totalAssets) / Number(totalSupply);
+      console.log('Share price:', sharePriceFloat.toFixed(9), 'USDC per share');
+
+      // Validate
+      if (amount > userAssets) {
+        toast.error(`Cannot withdraw ${(Number(amount) / 10_000_000).toFixed(4)} USDC. You only have ${(Number(userAssets) / 10_000_000).toFixed(4)} USDC.`);
+        setIsWithdrawing(false);
+        return;
+      }
+
+      if (amount > totalAssets) {
+        toast.error(`Vault only has ${(Number(totalAssets) / 10_000_000).toFixed(4)} USDC total. Cannot withdraw ${(Number(amount) / 10_000_000).toFixed(4)} USDC.`);
+        setIsWithdrawing(false);
+        return;
+      }
+
+      let txHash: string;
+
+      // With inflation attack protection, vaults can have very high share counts
+      // For small total asset amounts (< 1 USDC), ALWAYS redeem all shares
+      if (totalAssets < 10_000_000n) {
+        console.log('==> Small vault detected, forcing full withdrawal of ALL shares');
+        txHash = await VaultContract.redeem(userShares, userAddress);
+      } else if (amount >= (userAssets * 90n) / 100n) {
+        // If withdrawing 90%+ of balance, redeem ALL shares to avoid rounding issues
+        console.log('==> Near-full withdrawal: redeeming ALL shares');
+        txHash = await VaultContract.redeem(userShares, userAddress);
+      } else {
+        // Partial withdrawal: calculate proportional shares
+        // shares = (amount * userShares) / userAssets
+        const sharesToRedeem = (amount * userShares) / userAssets;
+
+        console.log('==> Partial: trying to redeem', sharesToRedeem.toString(), 'shares (', (Number(sharesToRedeem) / 10_000_000).toFixed(7), ')');
+
+        // CRITICAL: Validate with the contract's formula to ensure no rounding to 0
+        // The contract will use preview_redeem which might round differently
+        // For safety, if calculated shares would give < 0.001 USDC, use full withdrawal
+        const assetsFromRedeem = (sharesToRedeem * totalAssets) / totalSupply;
+        console.log('Calculated assets from redeem:', assetsFromRedeem.toString());
+
+        if (assetsFromRedeem < 10000n) {
+          toast.error(
+            `⚠️ Cannot withdraw this amount due to rounding (would get ${(Number(assetsFromRedeem) / 10_000_000).toFixed(7)} USDC). Please withdraw everything using MAX button.`,
+            { duration: 7000 }
+          );
+          setIsWithdrawing(false);
+          return;
+        }
+
+        txHash = await VaultContract.redeem(sharesToRedeem, userAddress);
+      }
+
       toast.success(
         <div>
           Withdrawal successful!{' '}
@@ -198,9 +270,22 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     }
   };
 
-  const setMaxWithdraw = () => {
-    if (vaultBalance !== null) {
-      setWithdrawAmount(formatUSDC(vaultBalance));
+  const setMaxWithdraw = async () => {
+    if (!isConnected || !userAddress) return;
+
+    try {
+      // Get user's actual share balance and redeem all shares
+      // This avoids rounding issues with asset amounts
+      const shares = await VaultContract.getShareBalance(userAddress);
+      if (shares > BigInt(0)) {
+        const assets = await VaultContract.convertToAssets(shares, userAddress);
+        setWithdrawAmount(formatUSDC(assets));
+      }
+    } catch (error) {
+      console.error('Error getting max withdraw:', error);
+      if (vaultBalance !== null) {
+        setWithdrawAmount(formatUSDC(vaultBalance));
+      }
     }
   };
 
