@@ -59,18 +59,36 @@ The `#[default_impl]` macro generates default implementations for most vault met
 - `deposit()`, `mint()` - Supply USDC to Blend after receiving from user
 - `withdraw()`, `redeem()` - Withdraw from Blend before returning to user
 
+### Authorization Pattern
+
+**The vault uses the standard SEP-41 approve/transferFrom pattern**:
+
+- **deposit()** and **mint()** use `token_client.transfer_from(&vault, &from, &vault, &amount)`
+- Users MUST call `usdc.approve(vault_address, amount)` before depositing
+- This is the standard DeFi pattern (Aave, Compound, Uniswap, etc.)
+
+**Why transfer_from, not transfer?**
+- `transfer(from, to, amount)` requires `from` to authorize the transfer call
+- When users call `vault.deposit()`, they only authorize the deposit call, not nested token transfers
+- `transfer_from(spender, from, to, amount)` allows the vault (as approved spender) to move tokens on behalf of the user
+
 ### Data Flow
 
 **Deposit Flow**:
-1. User approves vault to spend USDC
-2. Vault transfers USDC from user (`token::TokenClient`)
-3. Vault supplies USDC to Blend pool via `submit()` with `REQUEST_TYPE_SUPPLY`
-4. Vault mints shares to user (`Base::mint()`)
+1. **[USER ACTION]** User calls `usdc.approve(vault_address, amount)` to authorize vault
+2. **[USER ACTION]** User calls `vault.deposit(amount, receiver, from, operator)`
+3. Vault uses `transfer_from()` to pull USDC from user
+4. Vault authorizes USDC transfer to Blend pool via `authorize_as_current_contract()`
+5. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_SUPPLY` request
+6. Blend pool transfers USDC from vault to itself
+7. Vault mints shares to receiver (`Base::mint()`)
 
 **Withdrawal Flow**:
-1. Vault withdraws USDC from Blend pool via `submit()` with `REQUEST_TYPE_WITHDRAW`
-2. Vault burns user's shares (`Base::burn()`)
-3. Vault transfers USDC to user
+1. **[USER ACTION]** User calls `vault.withdraw(amount, receiver, owner, operator)`
+2. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_WITHDRAW` request
+3. Blend pool transfers USDC from itself to vault
+4. Vault burns owner's shares (`Base::burn()`)
+5. Vault transfers USDC from itself to receiver
 
 **Total Assets Calculation**:
 - Queries `get_positions()` on Blend pool
@@ -129,16 +147,95 @@ Do NOT add `blend-contract-sdk` as it uses incompatible soroban-sdk v22.
 - `Vault::preview_*()` - Use for share/asset conversions
 - Storage managed by OpenZeppelin, accessed via helper functions
 
+**Token Authorization Patterns**:
+- Use `transfer_from()` to pull tokens from users (requires prior approval)
+- Use `authorize_as_current_contract()` to authorize nested contract calls
+- Example authorization for Blend pool token transfer:
+  ```rust
+  e.authorize_as_current_contract(vec![
+      e,
+      InvokerContractAuthEntry::Contract(SubContractInvocation {
+          context: ContractContext {
+              contract: usdc_token,
+              fn_name: Symbol::new(e, "transfer"),
+              args: (vault_address, pool_address, amount).into_val(e),
+          },
+          sub_invocations: vec![e],
+      }),
+  ]);
+  ```
+
 **Blend Pool Interaction**:
 - Create client: `BlendPoolClient::new(e, &pool_address)`
 - Build requests vector with `Request` structs
 - Call `submit()` with vault address as from/spender/to for vault operations
 - Use `get_positions()` to query current supply/liability/collateral
 
+## Frontend Integration
+
+**Required User Actions for Deposits**:
+
+```typescript
+// Step 1: Approve vault to spend USDC (one-time or per-deposit)
+const usdcContract = new Contract(USDC_ADDRESS);
+await usdcContract.approve({
+  from: userAddress,
+  spender: VAULT_ADDRESS,
+  amount: depositAmount,
+  expiration_ledger: currentLedger + 100000 // ~5.7 days
+});
+
+// Step 2: Deposit USDC into vault
+const vaultContract = new Contract(VAULT_ADDRESS);
+await vaultContract.deposit({
+  assets: depositAmount,
+  receiver: userAddress,
+  from: userAddress,
+  operator: userAddress
+});
+```
+
+**One-Time Approval Pattern** (recommended for better UX):
+```typescript
+// Approve large amount once
+await usdcContract.approve({
+  from: userAddress,
+  spender: VAULT_ADDRESS,
+  amount: 9_007_199_254_740_991n, // Max safe integer
+  expiration_ledger: currentLedger + 5_256_000 // ~1 year
+});
+
+// Then deposits don't need separate approval step
+await vaultContract.deposit({ ... });
+```
+
+**Withdrawal** (no approval needed):
+```typescript
+await vaultContract.withdraw({
+  assets: withdrawAmount,
+  receiver: userAddress,
+  owner: userAddress,
+  operator: userAddress
+});
+```
+
 ## Testing Considerations
 
 When adding tests, note:
 - Use `testutils` feature: `soroban-sdk = { version = "23.1.0", features = ["testutils"] }`
+- Always call `env.mock_all_auths()` to simulate signed transactions
+- Call `usdc_client.approve(&user, &vault, &amount, &ledger)` before deposits
 - Mock Blend pool contract or use BlendFixture from blend-contract-sdk tests
 - USDC uses 7 decimals on Stellar
 - Test share price changes as yield accrues in Blend pool
+
+**Example Test Pattern**:
+```rust
+let fixture = TestFixture::new();
+
+// Approve vault to spend user's USDC
+fixture.usdc_client.approve(&user, &vault, &i128::MAX, &200);
+
+// Now deposits will work
+let shares = fixture.vault_client.deposit(&amount, &user, &user, &user);
+```

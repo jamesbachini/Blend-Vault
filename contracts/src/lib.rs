@@ -1,8 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractclient, contractevent, contractimpl, contracttype, token, Address, Env, Map,
-    String, Vec,
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
+    contract, contractclient, contractevent, contractimpl, contracttype, token, vec, Address,
+    Env, IntoVal, Map, String, Symbol, Vec,
 };
 use stellar_macros::default_impl;
 use stellar_tokens::{
@@ -311,9 +312,27 @@ impl BlendVaultContract {
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
             request_type: REQUEST_TYPE_SUPPLY,
-            address: usdc_token,
+            address: usdc_token.clone(),
             amount: usdc_received,
         });
+
+        // Authorize the Blend pool to transfer USDC from vault to itself
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: usdc_token,
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (
+                        vault_address.clone(),
+                        pool_address.clone(),
+                        usdc_received,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
 
@@ -459,9 +478,10 @@ impl FungibleVault for BlendVaultContract {
         // Calculate shares to mint
         let shares = Vault::preview_deposit(e, assets);
 
-        // Transfer USDC from user to vault
+        // Transfer USDC from user to vault using transfer_from
+        // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
-        token_client.transfer(&from, &vault_address, &assets);
+        token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
         let pool_client = BlendPoolClient::new(e, &pool_address);
@@ -473,6 +493,20 @@ impl FungibleVault for BlendVaultContract {
             address: asset.clone(),
             amount: assets,
         });
+
+        // Authorize the Blend pool to transfer USDC from vault to itself
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (vault_address.clone(), pool_address.clone(), assets)
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         // Submit the supply request to Blend (vault already has the USDC)
         pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
@@ -512,9 +546,10 @@ impl FungibleVault for BlendVaultContract {
         // Calculate assets needed
         let assets = Vault::preview_mint(e, shares);
 
-        // Transfer USDC from user to vault
+        // Transfer USDC from user to vault using transfer_from
+        // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
-        token_client.transfer(&from, &vault_address, &assets);
+        token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
         let pool_client = BlendPoolClient::new(e, &pool_address);
@@ -525,6 +560,20 @@ impl FungibleVault for BlendVaultContract {
             address: asset.clone(),
             amount: assets,
         });
+
+        // Authorize the Blend pool to transfer USDC from vault to itself
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (vault_address.clone(), pool_address.clone(), assets)
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
 

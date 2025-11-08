@@ -196,6 +196,10 @@ impl<'a> TestFixture<'a> {
         // Mint USDC to user for testing
         usdc_client.mint(&user, &1_000_000_0000000); // 1M USDC
 
+        // Pre-approve vault to spend user's USDC (for testing convenience)
+        // In real scenarios, users would call approve before each deposit
+        usdc_client.approve(&user, &vault, &i128::MAX, &200);
+
         // Mint BLND to blend pool for rewards
         blnd_client.mint(&blend_pool, &1_000_000_0000000);
 
@@ -685,6 +689,9 @@ fn test_multiple_users_deposit() {
     // Mint USDC to second user
     fixture.usdc_client.mint(&user2, &1_000_000_0000000);
 
+    // Approve vault to spend user2's USDC
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+
     let deposit1 = 1000_0000000;
     let deposit2 = 2000_0000000;
 
@@ -887,6 +894,10 @@ fn test_depositors_snapshot() {
     fixture.usdc_client.mint(&user2, &1_000_000_0000000);
     fixture.usdc_client.mint(&user3, &1_000_000_0000000);
 
+    // Approve vault to spend users' USDC
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+    fixture.usdc_client.approve(&user3, &fixture.vault, &i128::MAX, &200);
+
     // User 1 deposits
     let deposit1 = 1000_0000000;
     fixture
@@ -1066,4 +1077,316 @@ fn test_double_initialization() {
         &1,
         &comet_pool,
     );
+}
+
+// ===== Tests with Authorization-Enforcing Mock =====
+// These tests use an improved mock that simulates token transfers and authorization
+
+// Improved Mock Blend Pool that actually transfers tokens like the real pool
+#[contract]
+pub struct RealisticMockBlendPool;
+
+#[contractimpl]
+impl RealisticMockBlendPool {
+    pub fn submit(
+        env: Env,
+        _from: Address,
+        _spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        Self::process_requests(env, to, requests)
+    }
+
+    fn process_requests(env: Env, to: Address, requests: Vec<Request>) -> Positions {
+        // Get current positions from storage or create new
+        let mut positions: Positions = env
+            .storage()
+            .persistent()
+            .get(&MockPoolDataKey::Positions(to.clone()))
+            .unwrap_or_else(|| {
+                let supply_map: Map<u32, i128> = Map::new(&env);
+                let collateral_map: Map<u32, i128> = Map::new(&env);
+                let liabilities_map: Map<u32, i128> = Map::new(&env);
+                Positions {
+                    collateral: collateral_map,
+                    liabilities: liabilities_map,
+                    supply: supply_map,
+                }
+            });
+
+        let pool_address = env.current_contract_address();
+
+        // For each request, update the positions AND handle token transfers
+        for request in requests.iter() {
+            let token_client = token::TokenClient::new(&env, &request.address);
+
+            if request.request_type == REQUEST_TYPE_SUPPLY {
+                // For SUPPLY: Transfer tokens from vault to pool
+                // The vault has pre-authorized this transfer via authorize_as_current_contract
+                token_client.transfer(&to, &pool_address, &request.amount);
+
+                // Update supply position
+                let current = positions.supply.get(0).unwrap_or(0);
+                positions.supply.set(0, current + request.amount);
+            } else if request.request_type == REQUEST_TYPE_WITHDRAW {
+                // For WITHDRAW: Transfer tokens from pool back to vault
+                // The pool can authorize its own transfers since it's the current contract
+                token_client.transfer(&pool_address, &to, &request.amount);
+
+                // Update supply position
+                let current = positions.supply.get(0).unwrap_or(0);
+                positions.supply.set(0, current - request.amount);
+            }
+        }
+
+        // Store updated positions
+        env.storage()
+            .persistent()
+            .set(&MockPoolDataKey::Positions(to.clone()), &positions);
+
+        positions
+    }
+
+    pub fn get_positions(env: Env, address: Address) -> Positions {
+        // Return the stored positions or empty positions
+        env.storage()
+            .persistent()
+            .get(&MockPoolDataKey::Positions(address))
+            .unwrap_or_else(|| {
+                let supply_map: Map<u32, i128> = Map::new(&env);
+                let collateral_map: Map<u32, i128> = Map::new(&env);
+                let liabilities_map: Map<u32, i128> = Map::new(&env);
+                Positions {
+                    collateral: collateral_map,
+                    liabilities: liabilities_map,
+                    supply: supply_map,
+                }
+            })
+    }
+
+    pub fn claim(
+        _env: Env,
+        _from: Address,
+        _reserve_token_ids: Vec<u32>,
+        _to: Address,
+    ) -> i128 {
+        // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
+        1000_0000000
+    }
+}
+
+#[test]
+fn test_deposit_with_authorization() {
+    let env = Env::default();
+    // Mock all auths to simulate signed transactions in a real environment
+    // This allows us to test the authorization flow works correctly
+    env.mock_all_auths();
+    let user = Address::generate(&env);
+
+    // Deploy USDC token
+    let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+    let usdc_client = MockTokenClient::new(&env, &usdc_token);
+    usdc_client.initialize(
+        &user,
+        &7,
+        &SorobanString::from_str(&env, "USD Coin"),
+        &SorobanString::from_str(&env, "USDC"),
+    );
+
+    // Deploy BLND token
+    let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+    let blnd_client = MockTokenClient::new(&env, &blnd_token);
+    blnd_client.initialize(
+        &user,
+        &7,
+        &SorobanString::from_str(&env, "Blend Token"),
+        &SorobanString::from_str(&env, "BLND"),
+    );
+
+    // Deploy realistic mock pool that requires authorization
+    let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+
+    // Deploy mock Comet Pool
+    let comet_pool = env.register_contract(None, MockCometPool);
+
+    // Deploy and initialize vault
+    let vault = env.register_contract(None, BlendVaultContract);
+    let vault_client = BlendVaultContractClient::new(&env, &vault);
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
+
+    // Mint USDC to user and to pool (for withdrawals)
+    usdc_client.mint(&user, &10_000_0000000);
+    usdc_client.mint(&blend_pool, &10_000_0000000); // Pool needs USDC for withdrawals
+
+    let deposit_amount = 1000_0000000;
+
+    // User must approve vault to spend their USDC first
+    usdc_client.approve(&user, &vault, &deposit_amount, &200);
+
+    // This deposit should work because user approved vault and vault uses transfer_from
+    let shares = vault_client.deposit(&deposit_amount, &user, &user, &user);
+
+    // Verify success
+    assert_eq!(shares, deposit_amount);
+    assert_eq!(vault_client.balance(&user), shares);
+
+    // Verify USDC was actually transferred to the pool
+    assert_eq!(usdc_client.balance(&blend_pool), 10_000_0000000 + deposit_amount);
+
+    // Verify total assets
+    assert_eq!(vault_client.total_assets(), deposit_amount);
+}
+
+#[test]
+fn test_withdraw_with_authorization() {
+    let env = Env::default();
+    // Mock all auths to simulate signed transactions
+    env.mock_all_auths();
+    let user = Address::generate(&env);
+
+    // Setup tokens
+    let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+    let usdc_client = MockTokenClient::new(&env, &usdc_token);
+    usdc_client.initialize(
+        &user,
+        &7,
+        &SorobanString::from_str(&env, "USD Coin"),
+        &SorobanString::from_str(&env, "USDC"),
+    );
+
+    let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+    let blnd_client = MockTokenClient::new(&env, &blnd_token);
+    blnd_client.initialize(
+        &user,
+        &7,
+        &SorobanString::from_str(&env, "Blend Token"),
+        &SorobanString::from_str(&env, "BLND"),
+    );
+
+    // Deploy realistic mock pool
+    let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+    let comet_pool = env.register_contract(None, MockCometPool);
+
+    // Deploy and initialize vault
+    let vault = env.register_contract(None, BlendVaultContract);
+    let vault_client = BlendVaultContractClient::new(&env, &vault);
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
+
+    // Mint USDC
+    usdc_client.mint(&user, &10_000_0000000);
+    // Pool needs enough USDC to cover withdrawals since it transfers directly
+    usdc_client.mint(&blend_pool, &100_000_0000000);
+
+    // Deposit first
+    let deposit_amount = 5000_0000000;
+
+    // User must approve vault to spend their USDC first
+    usdc_client.approve(&user, &vault, &deposit_amount, &200);
+
+    let shares = vault_client.deposit(&deposit_amount, &user, &user, &user);
+
+    // Debug: Check pool balance after deposit
+    let pool_balance_after_deposit = usdc_client.balance(&blend_pool);
+    assert!(pool_balance_after_deposit >= deposit_amount, "Pool should have received USDC from deposit");
+
+    // Now withdraw
+    let withdraw_amount = 2000_0000000;
+    let shares_burned = vault_client.withdraw(&withdraw_amount, &user, &user, &user);
+
+    // Verify
+    assert_eq!(shares_burned, withdraw_amount);
+    assert_eq!(vault_client.balance(&user), shares - shares_burned);
+
+    // Verify USDC was transferred back to user from pool
+    assert_eq!(
+        usdc_client.balance(&user),
+        10_000_0000000 - deposit_amount + withdraw_amount
+    );
+}
+
+#[test]
+fn test_multiple_deposits_with_auth() {
+    let env = Env::default();
+    // Mock all auths to simulate signed transactions
+    env.mock_all_auths();
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    // Setup tokens
+    let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+    let usdc_client = MockTokenClient::new(&env, &usdc_token);
+    usdc_client.initialize(
+        &user1,
+        &7,
+        &SorobanString::from_str(&env, "USD Coin"),
+        &SorobanString::from_str(&env, "USDC"),
+    );
+
+    let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+    let blnd_client = MockTokenClient::new(&env, &blnd_token);
+    blnd_client.initialize(
+        &user1,
+        &7,
+        &SorobanString::from_str(&env, "Blend Token"),
+        &SorobanString::from_str(&env, "BLND"),
+    );
+
+    // Deploy realistic mock pool
+    let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+    let comet_pool = env.register_contract(None, MockCometPool);
+
+    // Deploy and initialize vault
+    let vault = env.register_contract(None, BlendVaultContract);
+    let vault_client = BlendVaultContractClient::new(&env, &vault);
+    vault_client.initialize(
+        &usdc_token,
+        &0,
+        &blend_pool,
+        &0,
+        &blnd_token,
+        &1,
+        &comet_pool,
+    );
+
+    // Mint USDC to both users
+    usdc_client.mint(&user1, &10_000_0000000);
+    usdc_client.mint(&user2, &10_000_0000000);
+    usdc_client.mint(&blend_pool, &100_000_0000000);
+
+    // Both users deposit
+    let deposit1 = 1000_0000000;
+
+    // User1 must approve vault to spend their USDC first
+    usdc_client.approve(&user1, &vault, &deposit1, &200);
+    let shares1 = vault_client.deposit(&deposit1, &user1, &user1, &user1);
+
+    let deposit2 = 2000_0000000;
+
+    // User2 must approve vault to spend their USDC first
+    usdc_client.approve(&user2, &vault, &deposit2, &200);
+    let shares2 = vault_client.deposit(&deposit2, &user2, &user2, &user2);
+
+    // Verify both deposits worked
+    assert_eq!(vault_client.balance(&user1), shares1);
+    assert_eq!(vault_client.balance(&user2), shares2);
+
+    // Verify total assets
+    assert_eq!(vault_client.total_assets(), deposit1 + deposit2);
 }

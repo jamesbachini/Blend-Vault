@@ -25,7 +25,6 @@
       "Bash(stellar network add:*)",
       "Bash(soroban --version:*)",
       "Bash(stellar contract build:*)",
-      "Bash(stellar contract deploy:*)",
       "Bash(stellar keys address:*)",
       "WebFetch(domain:jsr.io)",
       "WebFetch(domain:soroban.stellar.org)",
@@ -37,9 +36,12 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:stellar.github.io)",
       "Bash(stellar keys ls:*)",
-      "Bash(stellar contract install:*)"
+      "Bash(stellar contract install:*)",
+      "Bash(cargo update:*)"
     ],
-    "deny": [],
+    "deny": [
+      "Bash(stellar contract deploy:*)"
+    ],
     "ask": []
   }
 }

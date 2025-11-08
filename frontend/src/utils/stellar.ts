@@ -6,7 +6,7 @@ export const HORIZON_URL = 'https://horizon.stellar.org';
 export const SOROBAN_RPC_URL = 'https://rpc.lightsail.network/';
 
 // Contract addresses
-export const VAULT_CONTRACT_ID = 'CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA';
+export const VAULT_CONTRACT_ID = 'CBBOND27RKR4UODDGSGQ4CCXAIX2NMWPZEUG2NXMDV5GVJ6SEZ3CE27W';
 export const USDC_CONTRACT_ID = 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75'; // Stellar USDC on mainnet
 
 // Initialize Soroban server

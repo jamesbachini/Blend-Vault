@@ -5,6 +5,7 @@ import { SwkAppDarkTheme, KitEventType } from '@creit-tech/stellar-wallets-kit/t
 import { defaultModules } from '@creit-tech/stellar-wallets-kit/modules/utils';
 import { ConnectButton } from './components/ConnectButton';
 import { VaultInterface } from './components/VaultInterface';
+import { VAULT_CONTRACT_ID } from './utils/stellar';
 import './App.css';
 
 // Initialize Stellar Wallets Kit
@@ -105,7 +106,7 @@ function App() {
       <footer className="app-footer">
         <div className="footer-content">
           <div className="footer-links">
-            <a href="https://stellar.expert/explorer/public/contract/CCZWCNTCTHO3FE6YCYX6YYWFR3B3BEVICD42RZZFMWSPDEIFPQYW4IHA" target="_blank">
+            <a href={`https://stellar.expert/explorer/public/contract/${VAULT_CONTRACT_ID}`} target="_blank">
               View Contract
             </a>
             <a href="https://github.com/jamesbachini/Blend-Vault" target="_blank">
