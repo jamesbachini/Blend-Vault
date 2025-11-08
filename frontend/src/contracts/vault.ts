@@ -18,23 +18,22 @@ const vaultContract = new StellarSdk.Contract(VAULT_CONTRACT_ID);
  */
 export async function getShareBalance(userAddress: string): Promise<bigint> {
   try {
-    const result = await sorobanServer.getContractData(
-      VAULT_CONTRACT_ID,
-      StellarSdk.xdr.ScVal.scvVec([
-        StellarSdk.xdr.ScVal.scvSymbol('Balance'),
-        addressToScVal(userAddress),
-      ])
+    const tx = await buildAndSimulateTransaction(
+      userAddress,
+      vaultContract,
+      'balance',
+      [addressToScVal(userAddress)]
     );
 
-    if (result && result.val) {
-      // In v14, result.val is LedgerEntryData, need to extract ScVal from it
-      const ledgerData = result.val;
-      const scVal = ledgerData.contractData().val();
-      return scValToNumber(scVal);
+    const result = await sorobanServer.simulateTransaction(tx);
+
+    if (StellarSdk.rpc.Api.isSimulationSuccess(result) && result.result) {
+      return scValToNumber(result.result.retval);
     }
+
     return BigInt(0);
   } catch (error) {
-    // If no balance exists, return 0
+    console.error('Error getting share balance:', error);
     return BigInt(0);
   }
 }

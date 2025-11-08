@@ -120,20 +120,20 @@ echo "NOTE: The contract is now deployed but NOT initialized."
 echo "You can verify the deployment before proceeding with initialization."
 echo ""
 
-read -p "Proceed with initialization? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Initialization skipped. You can initialize later with:"
-    echo "  stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- initialize \\"
-    echo "    --asset $USDC_ADDRESS \\"
-    echo "    --decimals_offset $DECIMALS_OFFSET \\"
-    echo "    --blend_pool $BLEND_POOL \\"
-    echo "    --usdc_reserve_index $USDC_RESERVE_INDEX \\"
-    echo "    --blnd_token $BLND_TOKEN \\"
-    echo "    --blnd_reserve_index $BLND_RESERVE_INDEX \\"
-    echo "    --comet_pool $COMET_POOL"
-    exit 0
-fi
+#read -p "Proceed with initialization? (y/N) " -n 1 -r
+#echo
+#if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#    echo "Initialization skipped. You can initialize later with:"
+#    echo "  stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- initialize \\"
+#    echo "    --asset $USDC_ADDRESS \\"
+#    echo "    --decimals_offset $DECIMALS_OFFSET \\"
+#    echo "    --blend_pool $BLEND_POOL \\"
+#    echo "    --usdc_reserve_index $USDC_RESERVE_INDEX \\"
+#    echo "    --blnd_token $BLND_TOKEN \\"
+#    echo "    --blnd_reserve_index $BLND_RESERVE_INDEX \\"
+#    echo "    --comet_pool $COMET_POOL"
+#    exit 0
+#fi
 
 # Step 6: Initialize the contract
 echo -e "${YELLOW}Step 6: Initializing contract...${NC}"
@@ -143,8 +143,7 @@ stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$SOURCE_ACCOUNT" \
     --network "$NETWORK" \
-    -- \
-    initialize \
+    -- initialize \
     --asset "$USDC_ADDRESS" \
     --decimals_offset "$DECIMALS_OFFSET" \
     --blend_pool "$BLEND_POOL" \
