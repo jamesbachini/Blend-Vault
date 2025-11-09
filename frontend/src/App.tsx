@@ -84,10 +84,12 @@ function App() {
       <main className="app-main">
         <div className="main-content">
           <div className="intro-section">
-            <h2>USDC Auto-Compounding Vault</h2>
+            <h2>USDC AUTO-COMPOUNDING VAULT</h2>
             <p>
-              Deposit your USDC to earn yield automatically through the Blend Protocol's Yield Box
-              Pool. Your deposits are supplied to Blend and earn interest continuously.
+              Deposit USDC on Stellar to earn yield through Blend's <a href="https://mainnet.blend.capital/dashboard/?poolId=CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS" target="_blank">Yield Box</a> Pool
+            </p>
+            <p>
+              BLND rewards are automatically swapped to USDC &amp; reinvested
             </p>
           </div>
 

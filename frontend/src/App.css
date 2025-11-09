@@ -13,6 +13,11 @@ body {
   color: #FFFFFF;
 }
 
+a {
+  color: #FFF;
+  text-decoration: none;
+}
+
 .app {
   min-height: 100vh;
   display: flex;
@@ -53,10 +58,10 @@ body {
 .logo-text h1 {
   margin: 0px 0px 0px 6px;
   font-family: "DM Sans", Roboto;
-  font-weight: 500;
-  font-size: 1.125rem;
+  font-weight: bold;
+  font-size: 1.25rem;
   line-height: 1.473;
-  color: #FFFFFF;
+  color: #32ac4a;
 }
 
 .logo-text p {

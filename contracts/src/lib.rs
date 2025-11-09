@@ -92,8 +92,11 @@ pub struct Positions {
 }
 
 // Request types for Blend pool interactions
-const REQUEST_TYPE_SUPPLY: u32 = 0;
-const REQUEST_TYPE_WITHDRAW: u32 = 1;
+// Using SupplyCollateral/WithdrawCollateral instead of Supply/Withdraw
+// This deposits funds as collateral (positions.collateral) which still earns interest
+// but provides flexibility to borrow if needed in the future
+const REQUEST_TYPE_SUPPLY_COLLATERAL: u32 = 2;
+const REQUEST_TYPE_WITHDRAW_COLLATERAL: u32 = 3;
 
 // Blend Pool contract client interface
 #[contractclient(name = "BlendPoolClient")]
@@ -311,7 +314,7 @@ impl BlendVaultContract {
         // Step 3: Deposit USDC back into Blend pool
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
-            request_type: REQUEST_TYPE_SUPPLY,
+            request_type: REQUEST_TYPE_SUPPLY_COLLATERAL,
             address: usdc_token.clone(),
             amount: usdc_received,
         });
@@ -416,9 +419,10 @@ impl FungibleVault for BlendVaultContract {
         // Get the vault's positions in the Blend pool
         let positions = pool_client.get_positions(&vault_address);
 
-        // Return the supply amount for USDC (our underlying asset)
-        // The supply map uses the reserve index as key
-        positions.supply.get(usdc_index).unwrap_or(0)
+        // Return the collateral amount for USDC (our underlying asset)
+        // The collateral map uses the reserve index as key
+        // We use collateral instead of supply because we deposit using SupplyCollateral (type 2)
+        positions.collateral.get(usdc_index).unwrap_or(0)
     }
 
     fn convert_to_shares(e: &Env, assets: i128) -> i128 {
@@ -489,7 +493,7 @@ impl FungibleVault for BlendVaultContract {
         // Create supply request
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
-            request_type: REQUEST_TYPE_SUPPLY,
+            request_type: REQUEST_TYPE_SUPPLY_COLLATERAL,
             address: asset.clone(),
             amount: assets,
         });
@@ -556,7 +560,7 @@ impl FungibleVault for BlendVaultContract {
 
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
-            request_type: REQUEST_TYPE_SUPPLY,
+            request_type: REQUEST_TYPE_SUPPLY_COLLATERAL,
             address: asset.clone(),
             amount: assets,
         });
@@ -622,7 +626,7 @@ impl FungibleVault for BlendVaultContract {
 
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
-            request_type: REQUEST_TYPE_WITHDRAW,
+            request_type: REQUEST_TYPE_WITHDRAW_COLLATERAL,
             address: asset.clone(),
             amount: assets,
         });
@@ -690,7 +694,7 @@ impl FungibleVault for BlendVaultContract {
 
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
-            request_type: REQUEST_TYPE_WITHDRAW,
+            request_type: REQUEST_TYPE_WITHDRAW_COLLATERAL,
             address: asset.clone(),
             amount: assets,
         });

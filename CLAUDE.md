@@ -79,20 +79,21 @@ The `#[default_impl]` macro generates default implementations for most vault met
 2. **[USER ACTION]** User calls `vault.deposit(amount, receiver, from, operator)`
 3. Vault uses `transfer_from()` to pull USDC from user
 4. Vault authorizes USDC transfer to Blend pool via `authorize_as_current_contract()`
-5. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_SUPPLY` request
-6. Blend pool transfers USDC from vault to itself
+5. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_SUPPLY_COLLATERAL` request
+6. Blend pool transfers USDC from vault to itself and records as collateral
 7. Vault mints shares to receiver (`Base::mint()`)
 
 **Withdrawal Flow**:
 1. **[USER ACTION]** User calls `vault.withdraw(amount, receiver, owner, operator)`
-2. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_WITHDRAW` request
+2. Vault calls `blend_pool.submit()` with `REQUEST_TYPE_WITHDRAW_COLLATERAL` request
 3. Blend pool transfers USDC from itself to vault
 4. Vault burns owner's shares (`Base::burn()`)
 5. Vault transfers USDC from itself to receiver
 
 **Total Assets Calculation**:
 - Queries `get_positions()` on Blend pool
-- Extracts supply amount for USDC using `usdc_reserve_index`
+- Extracts collateral amount for USDC using `usdc_reserve_index`
+- Funds are deposited as collateral (not supply) which still earns interest
 - Share price = total_assets / total_supply
 
 ### Storage
@@ -105,9 +106,18 @@ Contract stores two pieces of data in instance storage:
 
 **Pool Address**: `CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS`
 
-**Request Types**:
-- `REQUEST_TYPE_SUPPLY = 0` - Supply assets to pool
-- `REQUEST_TYPE_WITHDRAW = 1` - Withdraw assets from pool
+**Request Types** (from Blend SDK):
+- `REQUEST_TYPE_SUPPLY_COLLATERAL = 2` - Supply assets as collateral (used by this vault)
+- `REQUEST_TYPE_WITHDRAW_COLLATERAL = 3` - Withdraw collateral assets (used by this vault)
+- `REQUEST_TYPE_SUPPLY = 0` - Supply assets (non-collateralized, NOT used)
+- `REQUEST_TYPE_WITHDRAW = 1` - Withdraw assets (non-collateralized, NOT used)
+
+**Why Collateral vs Supply?**
+The vault uses SupplyCollateral (type 2) instead of Supply (type 0) because:
+- Both earn the same interest rate from Blend
+- Collateral provides flexibility to borrow against deposits if needed in the future
+- Funds appear in `positions.collateral` map instead of `positions.supply` map
+- This is the standard pattern used by other Blend yield strategies
 
 **Critical Types** (must match Blend protocol exactly):
 - `Request` - Contains request_type, address, amount
@@ -211,13 +221,25 @@ await vaultContract.deposit({ ... });
 
 **Withdrawal** (no approval needed):
 ```typescript
+// Recommended: Use withdraw() with USDC amount
 await vaultContract.withdraw({
-  assets: withdrawAmount,
+  assets: withdrawAmount, // USDC amount to withdraw
+  receiver: userAddress,
+  owner: userAddress,
+  operator: userAddress
+});
+
+// Alternative: Use redeem() with share amount (not recommended for UI)
+// Only use if you need to redeem a specific number of shares
+await vaultContract.redeem({
+  shares: shareAmount,
   receiver: userAddress,
   owner: userAddress,
   operator: userAddress
 });
 ```
+
+**Best Practice**: Always use `withdraw()` with asset amounts in the frontend rather than `redeem()` with share amounts. This provides better UX as users think in terms of USDC, not shares. The contract handles all share calculations internally.
 
 ## Testing Considerations
 

@@ -55,14 +55,14 @@ impl MockBlendPool {
 
         // For each request, update the positions
         for request in requests.iter() {
-            if request.request_type == REQUEST_TYPE_SUPPLY {
-                // Get current supply and add to it
-                let current = positions.supply.get(0).unwrap_or(0);
-                positions.supply.set(0, current + request.amount);
-            } else if request.request_type == REQUEST_TYPE_WITHDRAW {
-                // Get current supply and subtract from it
-                let current = positions.supply.get(0).unwrap_or(0);
-                positions.supply.set(0, current - request.amount);
+            if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
+                // Get current collateral and add to it
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current + request.amount);
+            } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
+                // Get current collateral and subtract from it
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current - request.amount);
             }
         }
 
@@ -1121,23 +1121,23 @@ impl RealisticMockBlendPool {
         for request in requests.iter() {
             let token_client = token::TokenClient::new(&env, &request.address);
 
-            if request.request_type == REQUEST_TYPE_SUPPLY {
-                // For SUPPLY: Transfer tokens from vault to pool
+            if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
+                // For SUPPLY_COLLATERAL: Transfer tokens from vault to pool
                 // The vault has pre-authorized this transfer via authorize_as_current_contract
                 token_client.transfer(&to, &pool_address, &request.amount);
 
-                // Update supply position
-                let current = positions.supply.get(0).unwrap_or(0);
-                positions.supply.set(0, current + request.amount);
-            } else if request.request_type == REQUEST_TYPE_WITHDRAW {
-                // For WITHDRAW: Mint tokens to vault to simulate the pool returning funds
+                // Update collateral position
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current + request.amount);
+            } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
+                // For WITHDRAW_COLLATERAL: Mint tokens to vault to simulate the pool returning funds
                 // We use mint instead of transfer to avoid MockToken authorization issues
                 let mock_token_client = MockTokenClient::new(&env, &request.address);
                 mock_token_client.mint(&to, &request.amount);
 
-                // Update supply position
-                let current = positions.supply.get(0).unwrap_or(0);
-                positions.supply.set(0, current - request.amount);
+                // Update collateral position
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current - request.amount);
             }
         }
 
