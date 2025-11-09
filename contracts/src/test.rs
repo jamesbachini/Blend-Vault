@@ -1386,3 +1386,495 @@ fn test_multiple_deposits_with_auth() {
     // Verify total assets
     assert_eq!(vault_client.total_assets(), deposit1 + deposit2);
 }
+
+// ===== COMPREHENSIVE EDGE CASE TESTS =====
+
+#[test]
+fn test_exact_user_scenario_reported() {
+    // This test replicates the exact scenario that caused the $0.98 balance issue:
+    // User 1 deposits 0.01 USDC
+    // User 2 deposits 1 USDC
+    // User 1 deposits another 0.01 USDC
+    // User 1's balance should be 0.02 USDC, not 0.98 USDC
+
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+
+    // Setup user2
+    fixture.usdc_client.mint(&user2, &10_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+
+    // User 1 deposits 0.01 USDC
+    let deposit1 = 1_0000; // 0.0001 USDC (7 decimals)
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit1, &user1, &user1, &user1);
+
+    // User 2 deposits 1 USDC
+    let deposit2 = 1_0000000; // 1 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit2, &user2, &user2, &user2);
+
+    // User 1 deposits another 0.01 USDC
+    let deposit3 = 1_0000; // 0.0001 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit3, &user1, &user1, &user1);
+
+    // Check user1's max_withdraw (how much USDC they can withdraw)
+    let user1_max_withdraw = fixture.vault_client.max_withdraw(&user1);
+    let user2_max_withdraw = fixture.vault_client.max_withdraw(&user2);
+
+    // User1 should be able to withdraw their total deposits (0.0002 USDC)
+    let expected_user1_assets = deposit1 + deposit3;
+    assert_eq!(
+        user1_max_withdraw, expected_user1_assets,
+        "User1 should be able to withdraw exactly what they deposited"
+    );
+
+    // User2 should be able to withdraw their deposit (1 USDC)
+    assert_eq!(
+        user2_max_withdraw, deposit2,
+        "User2 should be able to withdraw exactly what they deposited"
+    );
+
+    // Total assets should equal sum of all deposits
+    let total_assets = fixture.vault_client.total_assets();
+    assert_eq!(
+        total_assets,
+        deposit1 + deposit2 + deposit3,
+        "Total assets should equal sum of all deposits"
+    );
+}
+
+#[test]
+fn test_small_and_large_deposits_precision() {
+    // Test that small deposits don't get rounded away when mixed with large deposits
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+
+    fixture.usdc_client.mint(&user2, &1_000_000_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+
+    // User1 deposits tiny amount (0.0000001 USDC = 1 stroops)
+    let tiny_deposit = 1;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&tiny_deposit, &user1, &user1, &user1);
+
+    // User2 deposits large amount (100,000 USDC)
+    let large_deposit = 100_000_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&large_deposit, &user2, &user2, &user2);
+
+    // User1 deposits another tiny amount
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&tiny_deposit, &user1, &user1, &user1);
+
+    // Check that user1 can still withdraw their full amount
+    let user1_max_withdraw = fixture.vault_client.max_withdraw(&user1);
+    assert_eq!(
+        user1_max_withdraw,
+        tiny_deposit + tiny_deposit,
+        "Tiny deposits should not be lost even with large deposits"
+    );
+}
+
+#[test]
+fn test_max_withdraw_matches_share_value() {
+    // Verify that max_withdraw always returns the correct asset value of user's shares
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+
+    fixture.usdc_client.mint(&user2, &10_000_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+
+    // Multiple deposits
+    let deposit1 = 100_0000000; // 100 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit1, &user1, &user1, &user1);
+
+    let deposit2 = 500_0000000; // 500 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit2, &user2, &user2, &user2);
+
+    let deposit3 = 50_0000000; // 50 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit3, &user1, &user1, &user1);
+
+    // Check max_withdraw for both users
+    let user1_max_withdraw = fixture.vault_client.max_withdraw(&user1);
+    let user2_max_withdraw = fixture.vault_client.max_withdraw(&user2);
+
+    // User1 total deposits
+    let user1_total_deposits = deposit1 + deposit3;
+    assert_eq!(
+        user1_max_withdraw, user1_total_deposits,
+        "User1 max_withdraw should equal their total deposits"
+    );
+
+    // User2 total deposits
+    assert_eq!(
+        user2_max_withdraw, deposit2,
+        "User2 max_withdraw should equal their deposit"
+    );
+
+    // Sum of max_withdraws should equal total_assets
+    let total_assets = fixture.vault_client.total_assets();
+    assert_eq!(
+        user1_max_withdraw + user2_max_withdraw,
+        total_assets,
+        "Sum of all max_withdraws should equal total_assets"
+    );
+}
+
+#[test]
+fn test_total_assets_matches_blend_pool() {
+    // Verify that total_assets correctly queries the Blend pool collateral
+    let fixture = TestFixture::new();
+
+    let deposit_amount = 1000_0000000; // 1000 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    // Get total_assets from vault
+    let total_assets = fixture.vault_client.total_assets();
+
+    // Query Blend pool directly
+    let pool_client = BlendPoolClient::new(&fixture.env, &fixture.blend_pool);
+    let positions = pool_client.get_positions(&fixture.vault);
+
+    // Get collateral from positions (index 0 is USDC in our test)
+    let blend_collateral = positions.collateral.get(0).unwrap_or(0);
+
+    assert_eq!(
+        total_assets, blend_collateral,
+        "total_assets should match Blend pool collateral position"
+    );
+
+    // Also verify it matches the deposit
+    assert_eq!(
+        total_assets, deposit_amount,
+        "total_assets should equal deposited amount"
+    );
+}
+
+#[test]
+fn test_share_price_consistency() {
+    // Test that share price remains consistent across multiple operations
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+    let user3 = Address::generate(&fixture.env);
+
+    fixture.usdc_client.mint(&user2, &10_000_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+    fixture.usdc_client.mint(&user3, &10_000_0000000);
+    fixture.usdc_client.approve(&user3, &fixture.vault, &i128::MAX, &200);
+
+    // User1 deposits (first depositor)
+    let deposit1 = 100_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit1, &user1, &user1, &user1);
+
+    // Check 1:1 ratio for first deposit
+    let shares1 = fixture.vault_client.balance(&user1);
+    assert_eq!(shares1, deposit1, "First deposit should be 1:1 shares:assets");
+
+    // User2 deposits same amount
+    let deposit2 = 100_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit2, &user2, &user2, &user2);
+
+    let shares2 = fixture.vault_client.balance(&user2);
+    assert_eq!(
+        shares2, deposit2,
+        "Second deposit should also be 1:1 with no yield"
+    );
+
+    // User3 deposits different amount
+    let deposit3 = 250_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit3, &user3, &user3, &user3);
+
+    let shares3 = fixture.vault_client.balance(&user3);
+    assert_eq!(
+        shares3, deposit3,
+        "Third deposit should maintain 1:1 ratio with no yield"
+    );
+
+    // Verify share values
+    let user1_assets = fixture.vault_client.convert_to_assets(&shares1);
+    let user2_assets = fixture.vault_client.convert_to_assets(&shares2);
+    let user3_assets = fixture.vault_client.convert_to_assets(&shares3);
+
+    assert_eq!(user1_assets, deposit1, "User1 shares should be worth deposit1");
+    assert_eq!(user2_assets, deposit2, "User2 shares should be worth deposit2");
+    assert_eq!(user3_assets, deposit3, "User3 shares should be worth deposit3");
+}
+
+#[test]
+fn test_sequential_deposits_and_withdrawals() {
+    // Test complex sequence of deposits and withdrawals
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+
+    fixture.usdc_client.mint(&user2, &10_000_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+
+    // User1 deposits 100 USDC
+    let deposit1 = 100_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit1, &user1, &user1, &user1);
+
+    // User2 deposits 200 USDC
+    let deposit2 = 200_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit2, &user2, &user2, &user2);
+
+    // User1 withdraws 50 USDC
+    let withdraw1 = 50_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .withdraw(&withdraw1, &user1, &user1, &user1);
+
+    // User1 deposits another 25 USDC
+    let deposit3 = 25_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit3, &user1, &user1, &user1);
+
+    // Check final balances
+    let user1_max_withdraw = fixture.vault_client.max_withdraw(&user1);
+    let user2_max_withdraw = fixture.vault_client.max_withdraw(&user2);
+
+    // User1: deposited 100 + 25 - withdrew 50 = 75 USDC
+    let expected_user1 = deposit1 + deposit3 - withdraw1;
+    assert_eq!(
+        user1_max_withdraw, expected_user1,
+        "User1 should have 75 USDC"
+    );
+
+    // User2: deposited 200, should still have 200
+    assert_eq!(
+        user2_max_withdraw, deposit2,
+        "User2 should still have 200 USDC"
+    );
+
+    // Total assets should be 275 USDC
+    let total_assets = fixture.vault_client.total_assets();
+    assert_eq!(
+        total_assets,
+        expected_user1 + deposit2,
+        "Total assets should be 275 USDC"
+    );
+}
+
+#[test]
+fn test_convert_functions_bidirectional() {
+    // Test that convert_to_shares and convert_to_assets are inverse operations
+    let fixture = TestFixture::new();
+
+    // Deposit to establish share price
+    let deposit = 1000_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit, &fixture.user, &fixture.user, &fixture.user);
+
+    // Test various amounts
+    let test_amounts = [
+        1_0000000,      // 1 USDC
+        10_0000000,     // 10 USDC
+        100_0000000,    // 100 USDC
+        1_0000,         // 0.0001 USDC
+        999_9999999,    // 999.9999999 USDC
+    ];
+
+    for &assets in &test_amounts {
+        // Convert assets -> shares -> assets
+        let shares = fixture.vault_client.convert_to_shares(&assets);
+        let assets_back = fixture.vault_client.convert_to_assets(&shares);
+
+        // Should be equal (or very close due to rounding)
+        assert!(
+            (assets_back as i128 - assets as i128).abs() <= 1,
+            "Round-trip conversion should preserve value: {} -> {} -> {}",
+            assets,
+            shares,
+            assets_back
+        );
+    }
+}
+
+#[test]
+fn test_multiple_small_deposits_accumulate() {
+    // Test that many small deposits correctly accumulate
+    let fixture = TestFixture::new();
+
+    let small_deposit = 1_0000000; // 1 USDC
+    let num_deposits = 10;
+
+    for _ in 0..num_deposits {
+        fixture
+            .vault_client
+            .mock_all_auths()
+            .deposit(&small_deposit, &fixture.user, &fixture.user, &fixture.user);
+    }
+
+    // User should be able to withdraw total of all deposits
+    let max_withdraw = fixture.vault_client.max_withdraw(&fixture.user);
+    let expected_total = small_deposit * num_deposits;
+
+    assert_eq!(
+        max_withdraw, expected_total,
+        "Multiple small deposits should accumulate correctly"
+    );
+
+    // Total assets should match
+    let total_assets = fixture.vault_client.total_assets();
+    assert_eq!(
+        total_assets, expected_total,
+        "Total assets should match accumulated deposits"
+    );
+}
+
+#[test]
+fn test_zero_balance_user_max_withdraw() {
+    // Test that max_withdraw returns 0 for users with no deposits
+    let fixture = TestFixture::new();
+    let user_with_no_deposit = Address::generate(&fixture.env);
+
+    // Another user deposits to establish vault state
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&100_0000000, &fixture.user, &fixture.user, &fixture.user);
+
+    // User with no deposit should have 0 max_withdraw
+    let max_withdraw = fixture.vault_client.max_withdraw(&user_with_no_deposit);
+    assert_eq!(
+        max_withdraw, 0,
+        "User with no deposits should have 0 max_withdraw"
+    );
+}
+
+#[test]
+fn test_fractional_share_values() {
+    // Test deposits that result in fractional share values due to rounding
+    let fixture = TestFixture::new();
+    let user1 = fixture.user;
+    let user2 = Address::generate(&fixture.env);
+    let user3 = Address::generate(&fixture.env);
+
+    fixture.usdc_client.mint(&user2, &10_000_0000000);
+    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
+    fixture.usdc_client.mint(&user3, &10_000_0000000);
+    fixture.usdc_client.approve(&user3, &fixture.vault, &i128::MAX, &200);
+
+    // User1: 333 USDC (will divide into thirds later)
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&333_0000000, &user1, &user1, &user1);
+
+    // User2: 333 USDC
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&333_0000000, &user2, &user2, &user2);
+
+    // User3: 334 USDC (to handle rounding)
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&334_0000000, &user3, &user3, &user3);
+
+    // Total should be 1000 USDC
+    let total_assets = fixture.vault_client.total_assets();
+    assert_eq!(total_assets, 1000_0000000, "Total should be 1000 USDC");
+
+    // Each user's max_withdraw should match their deposit
+    assert_eq!(
+        fixture.vault_client.max_withdraw(&user1),
+        333_0000000,
+        "User1 should have 333 USDC"
+    );
+    assert_eq!(
+        fixture.vault_client.max_withdraw(&user2),
+        333_0000000,
+        "User2 should have 333 USDC"
+    );
+    assert_eq!(
+        fixture.vault_client.max_withdraw(&user3),
+        334_0000000,
+        "User3 should have 334 USDC"
+    );
+}
+
+#[test]
+fn test_preview_functions_match_actual() {
+    // Test that preview functions accurately predict actual results
+    let fixture = TestFixture::new();
+
+    // Test preview_deposit
+    let deposit_amount = 100_0000000;
+    let previewed_shares = fixture.vault_client.preview_deposit(&deposit_amount);
+
+    let actual_shares = fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    assert_eq!(
+        previewed_shares, actual_shares,
+        "preview_deposit should match actual shares received"
+    );
+
+    // Test preview_withdraw
+    let withdraw_amount = 50_0000000;
+    let previewed_shares_to_burn = fixture.vault_client.preview_withdraw(&withdraw_amount);
+
+    let actual_shares_burned = fixture
+        .vault_client
+        .mock_all_auths()
+        .withdraw(&withdraw_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    assert_eq!(
+        previewed_shares_to_burn, actual_shares_burned,
+        "preview_withdraw should match actual shares burned"
+    );
+}

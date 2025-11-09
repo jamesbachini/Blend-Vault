@@ -251,7 +251,7 @@ When adding tests, note:
 - USDC uses 7 decimals on Stellar
 - Test share price changes as yield accrues in Blend pool
 
-Tests should be run with:
+**IMPORTANT** Tests should be run with the target set as x86_64-unknown-linux-gnu
 cargo test --target x86_64-unknown-linux-gnu
 
 **Example Test Pattern**:
