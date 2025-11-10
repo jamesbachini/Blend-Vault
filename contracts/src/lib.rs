@@ -176,8 +176,8 @@ impl BlendVaultContract {
         Base::set_metadata(
             e,
             Self::decimals(e),
-            String::from_str(e, "AUTO COMPOUNDING VAULT"),
-            String::from_str(e, "ACV"),
+            String::from_str(e, "BLEND VAULT"),
+            String::from_str(e, "BV"),
         );
 
         // Mark as initialized
@@ -293,6 +293,43 @@ impl BlendVaultContract {
 
         // Step 2: Swap BLND for USDC on Comet
         let comet_client = CometPoolClient::new(e, &comet_pool);
+
+        // Authorize the Comet pool's token operations during swap
+        // The Comet pool calls approve on the BLND token, then transfer_from
+        // We need to authorize the approve call and the subsequent transfer
+        let expiration_ledger = e.ledger().sequence() + 100000; // ~5.7 days
+        e.authorize_as_current_contract(vec![
+            e,
+            // Authorize approve call
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: blnd_token.clone(),
+                    fn_name: Symbol::new(e, "approve"),
+                    args: (
+                        vault_address.clone(),
+                        comet_pool.clone(),
+                        blnd_claimed,
+                        expiration_ledger,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+            // Authorize transfer call
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: blnd_token.clone(),
+                    fn_name: Symbol::new(e, "transfer"),
+                    args: (
+                        vault_address.clone(),
+                        comet_pool.clone(),
+                        blnd_claimed,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         // Use a reasonable slippage tolerance (0.5% = 0.005)
         // min_amount_out = 0 for now (can be improved with price oracle)
@@ -611,8 +648,7 @@ impl FungibleVault for BlendVaultContract {
         operator.require_auth();
 
         // Try to compound rewards before withdrawal
-        // Note: Disabled for now to avoid authorization conflicts in nested calls
-        // Self::try_compound(e);
+        Self::try_compound(e);
 
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
@@ -679,8 +715,7 @@ impl FungibleVault for BlendVaultContract {
         operator.require_auth();
 
         // Try to compound rewards before redemption
-        // Note: Disabled for now to avoid authorization conflicts in nested calls
-        // Self::try_compound(e);
+        Self::try_compound(e);
 
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();

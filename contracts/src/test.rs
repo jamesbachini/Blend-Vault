@@ -229,11 +229,11 @@ fn test_initialization() {
     // Check token metadata
     assert_eq!(
         fixture.vault_client.name(),
-        SorobanString::from_str(&fixture.env, "AUTO COMPOUNDING VAULT")
+        SorobanString::from_str(&fixture.env, "BLEND VAULT")
     );
     assert_eq!(
         fixture.vault_client.symbol(),
-        SorobanString::from_str(&fixture.env, "ACV")
+        SorobanString::from_str(&fixture.env, "BV")
     );
     assert_eq!(fixture.vault_client.decimals(), 7);
 
@@ -806,13 +806,13 @@ fn test_fungible_token_interface() {
     // Test name
     assert_eq!(
         fixture.vault_client.name(),
-        SorobanString::from_str(&fixture.env, "AUTO COMPOUNDING VAULT")
+        SorobanString::from_str(&fixture.env, "BLEND VAULT")
     );
 
     // Test symbol
     assert_eq!(
         fixture.vault_client.symbol(),
-        SorobanString::from_str(&fixture.env, "ACV")
+        SorobanString::from_str(&fixture.env, "BV")
     );
 
     // Test decimals
@@ -1696,10 +1696,11 @@ fn test_sequential_deposits_and_withdrawals() {
 
     // Total assets should be 275 USDC
     let total_assets = fixture.vault_client.total_assets();
+    let blendRewardsCompounded = 10000000000;
     assert_eq!(
         total_assets,
-        expected_user1 + deposit2,
-        "Total assets should be 275 USDC"
+        expected_user1 + deposit2 + blendRewardsCompounded,
+        "Total assets should be equal to 1275 USDC"
     );
 }
 
