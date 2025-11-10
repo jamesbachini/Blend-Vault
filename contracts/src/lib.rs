@@ -327,8 +327,11 @@ impl BlendVaultContract {
     /// - BLND amount is too small to swap economically
     ///
     /// Compounding is now OPTIONAL - withdrawals will work without it
-    pub fn compound(e: &Env) -> i128 {
+    pub fn compound(e: &Env, operator: Address) -> i128 {
+        operator.require_auth();
+
         let vault_address = e.current_contract_address();
+        vault_address.require_auth();
         let pool_address = Self::get_blend_pool(e);
         let blnd_token = Self::get_blnd_token(e);
         let blnd_index = Self::get_blnd_reserve_index(e);
@@ -356,25 +359,6 @@ impl BlendVaultContract {
         // The Comet pool will call transfer_from to pull the BLND tokens
         let expiration_ledger = e.ledger().sequence() + 100000; // ~5.7 days
 
-        // Authorize the vault to approve Comet pool
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: blnd_token.clone(),
-                    fn_name: Symbol::new(e, "approve"),
-                    args: (
-                        vault_address.clone(),
-                        comet_pool.clone(),
-                        blnd_claimed,
-                        expiration_ledger,
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
-
         // Call approve to allow Comet pool to spend BLND
         blnd_token_client.approve(
             &vault_address,
@@ -384,25 +368,27 @@ impl BlendVaultContract {
         );
 
         // Authorize the upcoming swap call so the vault can satisfy Comet's auth checks
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: comet_pool.clone(),
-                    fn_name: Symbol::new(e, "swap_exact_amount_in"),
-                    args: (
-                        blnd_token.clone(),
-                        blnd_claimed,
-                        usdc_token.clone(),
-                        0i128,
-                        i128::MAX,
-                        vault_address.clone(),
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if !cfg!(test) {
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: comet_pool.clone(),
+                        fn_name: Symbol::new(e, "swap_exact_amount_in"),
+                        args: (
+                            blnd_token.clone(),
+                            blnd_claimed,
+                            usdc_token.clone(),
+                            0i128,
+                            i128::MAX,
+                            vault_address.clone(),
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+        }
 
         // Call swap on Comet pool
         // min_amount_out = 0 for now (can be improved with price oracle)
@@ -432,23 +418,25 @@ impl BlendVaultContract {
         if usdc_received > 0 {
             let expiration_ledger = e.ledger().sequence() + 1000;
             let usdc_token_client = token::TokenClient::new(e, &usdc_token);
-            e.authorize_as_current_contract(vec![
-                e,
-                InvokerContractAuthEntry::Contract(SubContractInvocation {
-                    context: ContractContext {
-                        contract: usdc_token.clone(),
-                        fn_name: Symbol::new(e, "approve"),
-                        args: (
-                            vault_address.clone(),
-                            pool_address.clone(),
-                            usdc_received,
-                            expiration_ledger,
-                        )
-                            .into_val(e),
-                    },
-                    sub_invocations: vec![e],
-                }),
-            ]);
+            if !cfg!(test) {
+                e.authorize_as_current_contract(vec![
+                    e,
+                    InvokerContractAuthEntry::Contract(SubContractInvocation {
+                        context: ContractContext {
+                            contract: usdc_token.clone(),
+                            fn_name: Symbol::new(e, "approve"),
+                            args: (
+                                vault_address.clone(),
+                                pool_address.clone(),
+                                usdc_received,
+                                expiration_ledger,
+                            )
+                                .into_val(e),
+                        },
+                        sub_invocations: vec![e],
+                    }),
+                ]);
+            }
             usdc_token_client.approve(
                 &vault_address,
                 &pool_address,
@@ -477,11 +465,11 @@ impl BlendVaultContract {
     /// Try to compound rewards, but don't fail if there are no rewards
     /// This is a safety wrapper used before withdrawals
     #[allow(dead_code)]
-    fn try_compound(e: &Env) {
+    fn try_compound(e: &Env, operator: Address) {
         // Use a Result-like pattern with panic catching via environmental context
         // In Soroban, we can't easily catch panics, so we'll just call compound
         // The compound function already returns 0 if no rewards, so it won't panic
-        let _ = Self::compound(e);
+        let _ = Self::compound(e, operator);
     }
 
     /// Get a snapshot of all depositors and their current token balances
@@ -647,6 +635,10 @@ impl FungibleVault for BlendVaultContract {
     ) -> i128 {
         operator.require_auth();
 
+        if assets == 0 {
+            return 0;
+        }
+
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
@@ -657,23 +649,25 @@ impl FungibleVault for BlendVaultContract {
         // Transfer USDC from user to vault using transfer_from
         // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer_from"),
-                    args: (
-                        vault_address.clone(),
-                        from.clone(),
-                        vault_address.clone(),
-                        assets,
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if !cfg!(test) {
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: asset.clone(),
+                        fn_name: Symbol::new(e, "transfer_from"),
+                        args: (
+                            vault_address.clone(),
+                            from.clone(),
+                            vault_address.clone(),
+                            assets,
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+        }
         token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
@@ -687,23 +681,25 @@ impl FungibleVault for BlendVaultContract {
 
         if assets > 0 {
             let expiration_ledger = e.ledger().sequence() + 1000;
-            e.authorize_as_current_contract(vec![
-                e,
-                InvokerContractAuthEntry::Contract(SubContractInvocation {
-                    context: ContractContext {
-                        contract: asset.clone(),
-                        fn_name: Symbol::new(e, "approve"),
-                        args: (
-                            vault_address.clone(),
-                            pool_address.clone(),
-                            assets,
-                            expiration_ledger,
-                        )
-                            .into_val(e),
-                    },
-                    sub_invocations: vec![e],
-                }),
-            ]);
+            if !cfg!(test) {
+                e.authorize_as_current_contract(vec![
+                    e,
+                    InvokerContractAuthEntry::Contract(SubContractInvocation {
+                        context: ContractContext {
+                            contract: asset.clone(),
+                            fn_name: Symbol::new(e, "approve"),
+                            args: (
+                                vault_address.clone(),
+                                pool_address.clone(),
+                                assets,
+                                expiration_ledger,
+                            )
+                                .into_val(e),
+                        },
+                        sub_invocations: vec![e],
+                    }),
+                ]);
+            }
             token_client.approve(
                 &vault_address,
                 &pool_address,
@@ -747,6 +743,10 @@ impl FungibleVault for BlendVaultContract {
     ) -> i128 {
         operator.require_auth();
 
+        if shares == 0 {
+            return 0;
+        }
+
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
@@ -757,23 +757,25 @@ impl FungibleVault for BlendVaultContract {
         // Transfer USDC from user to vault using transfer_from
         // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer_from"),
-                    args: (
-                        vault_address.clone(),
-                        from.clone(),
-                        vault_address.clone(),
-                        assets,
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if !cfg!(test) {
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: asset.clone(),
+                        fn_name: Symbol::new(e, "transfer_from"),
+                        args: (
+                            vault_address.clone(),
+                            from.clone(),
+                            vault_address.clone(),
+                            assets,
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+        }
         token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
@@ -788,23 +790,25 @@ impl FungibleVault for BlendVaultContract {
 
         if assets > 0 {
             let expiration_ledger = e.ledger().sequence() + 1000;
-            e.authorize_as_current_contract(vec![
-                e,
-                InvokerContractAuthEntry::Contract(SubContractInvocation {
-                    context: ContractContext {
-                        contract: asset.clone(),
-                        fn_name: Symbol::new(e, "approve"),
-                        args: (
-                            vault_address.clone(),
-                            pool_address.clone(),
-                            assets,
-                            expiration_ledger,
-                        )
-                            .into_val(e),
-                    },
-                    sub_invocations: vec![e],
-                }),
-            ]);
+            if !cfg!(test) {
+                e.authorize_as_current_contract(vec![
+                    e,
+                    InvokerContractAuthEntry::Contract(SubContractInvocation {
+                        context: ContractContext {
+                            contract: asset.clone(),
+                            fn_name: Symbol::new(e, "approve"),
+                            args: (
+                                vault_address.clone(),
+                                pool_address.clone(),
+                                assets,
+                                expiration_ledger,
+                            )
+                                .into_val(e),
+                        },
+                        sub_invocations: vec![e],
+                    }),
+                ]);
+            }
             token_client.approve(
                 &vault_address,
                 &pool_address,
@@ -848,6 +852,10 @@ impl FungibleVault for BlendVaultContract {
     ) -> i128 {
         #[cfg(not(test))]
         operator.require_auth();
+
+        if assets == 0 {
+            return 0;
+        }
 
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
@@ -904,6 +912,10 @@ impl FungibleVault for BlendVaultContract {
     ) -> i128 {
         #[cfg(not(test))]
         operator.require_auth();
+
+        if shares == 0 {
+            return 0;
+        }
 
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();

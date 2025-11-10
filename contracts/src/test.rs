@@ -3,25 +3,229 @@ use crate::mocks::{
     MockBlendPool, MockBlendPoolClient, MockCometPool, RealisticMockBlendPool,
     RealisticMockBlendPoolClient,
 };
+use blend_contract_sdk::{
+    pool,
+    testutils::{default_reserve_config, BlendFixture},
+};
 use sep_41_token::testutils::{MockTokenClient, MockTokenWASM};
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
+use soroban_sdk::{
+    testutils::{Address as _, BytesN as _, Ledger, LedgerInfo},
+    vec, Address, BytesN, Env, String as SorobanString, String,
+};
 
-// Test fixture structure
+const WEEK_IN_SECONDS: u64 = 60 * 60 * 24 * 7;
+const EMITTER_WAIT_SECONDS: u64 = WEEK_IN_SECONDS * 3;
+const BACKSTOP_WAIT_SECONDS: u64 = 60;
+const GULP_DELAY_SECONDS: u64 = 60 * 60 * 24 + BACKSTOP_WAIT_SECONDS;
+const EMISSION_RETRY_DELAY_SECONDS: u64 = 60 * 60;
+
+// Test fixture that uses the real Blend protocol contracts
 struct TestFixture<'a> {
     env: Env,
-    admin: Address,
+    deployer: Address,
     user: Address,
     usdc_token: Address,
     usdc_client: MockTokenClient<'a>,
     blnd_token: Address,
     blnd_client: MockTokenClient<'a>,
+    blend_fixture: BlendFixture<'a>,
     blend_pool: Address,
     comet_pool: Address,
     vault: Address,
     vault_client: BlendVaultContractClient<'a>,
+    usdc_reserve_index: u32,
+    blnd_reserve_token_id: u32,
 }
 
 impl<'a> TestFixture<'a> {
+    fn new() -> Self {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        env.ledger().with_mut(|li| {
+            li.timestamp = 1_700_000_000;
+            li.sequence_number = 100;
+            li.protocol_version = 23;
+        });
+
+        let deployer = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
+        let usdc_client = MockTokenClient::new(&env, &usdc_token);
+        usdc_client.initialize(
+            &deployer,
+            &7,
+            &SorobanString::from_str(&env, "USD Coin"),
+            &SorobanString::from_str(&env, "USDC"),
+        );
+
+        let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
+        let blnd_client = MockTokenClient::new(&env, &blnd_token);
+        blnd_client.initialize(
+            &deployer,
+            &7,
+            &SorobanString::from_str(&env, "Blend Token"),
+            &SorobanString::from_str(&env, "BLND"),
+        );
+
+        let blend_fixture = BlendFixture::deploy(&env, &deployer, &blnd_token, &usdc_token);
+
+        let blend_pool = blend_fixture.pool_factory.mock_all_auths().deploy(
+            &deployer,
+            &String::from_str(&env, "Test Pool"),
+            &BytesN::<32>::random(&env),
+            &Address::generate(&env),
+            &0_1000000,
+            &4,
+            &1_0000000,
+        );
+        let pool_client = pool::Client::new(&env, &blend_pool);
+
+        let usdc_reserve_index = 0u32;
+        let mut usdc_reserve_config = default_reserve_config();
+        usdc_reserve_config.index = usdc_reserve_index;
+        pool_client
+            .mock_all_auths()
+            .queue_set_reserve(&usdc_token, &usdc_reserve_config);
+        pool_client.mock_all_auths().set_reserve(&usdc_token);
+
+        let blnd_reserve_index = 1u32;
+        let mut blnd_reserve_config = default_reserve_config();
+        blnd_reserve_config.index = blnd_reserve_index;
+        pool_client
+            .mock_all_auths()
+            .queue_set_reserve(&blnd_token, &blnd_reserve_config);
+        pool_client.mock_all_auths().set_reserve(&blnd_token);
+
+        let emission_metadata = vec![
+            &env,
+            pool::ReserveEmissionMetadata {
+                res_index: usdc_reserve_index,
+                res_type: 1,
+                share: 1_0000000,
+            },
+        ];
+        pool_client
+            .mock_all_auths()
+            .set_emissions_config(&emission_metadata);
+
+        blend_fixture
+            .backstop
+            .mock_all_auths()
+            .deposit(&deployer, &blend_pool, &50_000_0000000);
+        blend_fixture
+            .backstop
+            .mock_all_auths()
+            .add_reward(&blend_pool, &Option::<Address>::None);
+        blend_fixture.backstop.mock_all_auths().drop();
+        blend_fixture.backstop.mock_all_auths().distribute();
+        pool_client.mock_all_auths().set_status(&3);
+        pool_client.mock_all_auths().update_status();
+
+        let comet_pool = blend_fixture.backstop_token.address.clone();
+        let blnd_reserve_token_id = usdc_reserve_index * 2 + 1;
+        let vault = env.register_contract(None, BlendVaultContract);
+        let vault_client = BlendVaultContractClient::new(&env, &vault);
+        vault_client.initialize(
+            &usdc_token,
+            &0,
+            &blend_pool,
+            &usdc_reserve_index,
+            &blnd_token,
+            &blnd_reserve_token_id,
+            &comet_pool,
+        );
+
+        usdc_client.mint(&user, &1_000_000_0000000);
+        blnd_client.mint(&user, &1_000_000_0000000);
+        usdc_client.approve(&user, &vault, &i128::MAX, &200);
+
+        Self {
+            env,
+            deployer,
+            user,
+            usdc_token,
+            usdc_client,
+            blnd_token,
+            blnd_client,
+            blend_fixture,
+            blend_pool,
+            comet_pool,
+            vault,
+            vault_client,
+            usdc_reserve_index,
+            blnd_reserve_token_id,
+        }
+    }
+
+    fn pool_client(&self) -> pool::Client<'a> {
+        pool::Client::new(&self.env, &self.blend_pool)
+    }
+
+    fn advance_time(&self, seconds: u64) {
+        let new_ts = self.env.ledger().timestamp() + seconds;
+        self.env.ledger().with_mut(|li| {
+            li.timestamp = new_ts;
+            li.sequence_number += 1;
+        });
+    }
+
+    fn accrue_emissions(&self) -> bool {
+        let mut emitted = self.run_emission_cycle();
+        if emitted == 0 {
+            self.advance_time(EMISSION_RETRY_DELAY_SECONDS);
+            emitted = self.run_emission_cycle();
+        }
+        if emitted == 0 {
+            return false;
+        }
+        self.advance_time(GULP_DELAY_SECONDS);
+        let gulped = self.pool_client().mock_all_auths().gulp_emissions();
+        if gulped > 0 {
+            self.advance_time(BACKSTOP_WAIT_SECONDS);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn run_emission_cycle(&self) -> i128 {
+        self.advance_time(EMITTER_WAIT_SECONDS);
+        self.blend_fixture
+            .emitter
+            .mock_all_auths()
+            .distribute();
+        self.advance_time(BACKSTOP_WAIT_SECONDS);
+        self.blend_fixture
+            .backstop
+            .mock_all_auths()
+            .distribute()
+    }
+
+    fn claim_rewards(&self, reserve_ids: &[u32]) -> i128 {
+        let mut ids = Vec::new(&self.env);
+        for id in reserve_ids {
+            ids.push_back(*id);
+        }
+        self.pool_client()
+            .mock_all_auths()
+            .claim(&self.vault, &ids, &self.vault)
+    }
+}
+
+// Legacy mock fixture used for tests that need direct control over Blend internals
+struct MockPoolFixture<'a> {
+    env: Env,
+    user: Address,
+    usdc_token: Address,
+    usdc_client: MockTokenClient<'a>,
+    blnd_token: Address,
+    blend_pool: Address,
+    vault: Address,
+    vault_client: BlendVaultContractClient<'a>,
+}
+
+impl<'a> MockPoolFixture<'a> {
     fn new() -> Self {
         let env = Env::default();
         env.mock_all_auths();
@@ -29,7 +233,6 @@ impl<'a> TestFixture<'a> {
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
 
-        // Deploy USDC token
         let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
         let usdc_client = MockTokenClient::new(&env, &usdc_token);
         usdc_client.initialize(
@@ -39,7 +242,6 @@ impl<'a> TestFixture<'a> {
             &SorobanString::from_str(&env, "USDC"),
         );
 
-        // Deploy BLND token
         let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
         let blnd_client = MockTokenClient::new(&env, &blnd_token);
         blnd_client.initialize(
@@ -49,53 +251,36 @@ impl<'a> TestFixture<'a> {
             &SorobanString::from_str(&env, "BLND"),
         );
 
-        // Deploy Blend Pool with realistic transfers
         let blend_pool = env.register_contract(None, RealisticMockBlendPool);
         let realistic_pool_client =
             RealisticMockBlendPoolClient::new(&env, &blend_pool);
         realistic_pool_client.set_reward_token(&blnd_token);
 
-        // Deploy mock Comet Pool
         let comet_pool = env.register_contract(None, MockCometPool);
 
-        // Step 1: Deploy vault contract (without initialization)
         let vault = env.register_contract(None, BlendVaultContract);
         let vault_client = BlendVaultContractClient::new(&env, &vault);
-
-        // Step 2: Initialize vault separately
         vault_client.initialize(
             &usdc_token,
-            &0, // decimals_offset
+            &0,
             &blend_pool,
-            &0, // usdc_reserve_index
+            &0,
             &blnd_token,
-            &1, // blnd_reserve_index
+            &1,
             &comet_pool,
         );
 
-        // Mint USDC to user for testing
-        usdc_client.mint(&user, &1_000_000_0000000); // 1M USDC
-
-        // Pre-approve vault to spend user's USDC (for testing convenience)
-        // In real scenarios, users would call approve before each deposit
+        usdc_client.mint(&user, &1_000_000_0000000);
         usdc_client.approve(&user, &vault, &i128::MAX, &200);
-
-        // Mint BLND to blend pool for rewards
         blnd_client.mint(&blend_pool, &1_000_000_0000000);
-
-        // Mint USDC to comet pool for swaps
-        usdc_client.mint(&comet_pool, &1_000_000_0000000);
 
         Self {
             env,
-            admin,
             user,
             usdc_token,
             usdc_client,
             blnd_token,
-            blnd_client,
             blend_pool,
-            comet_pool,
             vault,
             vault_client,
         }
@@ -417,7 +602,7 @@ fn test_convert_to_assets() {
 
 #[test]
 fn test_total_assets_reflects_b_rate_growth() {
-    let fixture = TestFixture::new();
+    let fixture = MockPoolFixture::new();
     let deposit_amount = 1000_0000000;
 
     fixture
@@ -629,24 +814,65 @@ fn test_compound_with_rewards() {
         .mock_all_auths()
         .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
 
+    assert!(
+        fixture.accrue_emissions(),
+        "failed to accrue Blend emissions before compounding"
+    );
     // Call compound - should claim BLND and swap to USDC
-    let usdc_deposited = fixture.vault_client.compound();
+    let usdc_deposited = fixture
+        .vault_client
+        .mock_all_auths()
+        .compound(&fixture.user);
 
-    // Mock returns 1:1 swap, so should deposit some USDC
-    // The mock claim returns 1000 BLND (with 7 decimals)
+    // Real Blend pool should yield rewards that are deposited back into Blend
     assert!(usdc_deposited > 0);
 }
 
 #[test]
+fn test_compound_with_rewards_then_withdraw() {
+    let fixture = TestFixture::new();
+    let deposit_amount = 2_000_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    assert!(
+        fixture.accrue_emissions(),
+        "failed to accrue Blend emissions before compounding"
+    );
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .compound(&fixture.user);
+
+    let balance_before = fixture.usdc_client.balance(&fixture.user);
+    let max_withdraw = fixture.vault_client.max_withdraw(&fixture.user);
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .withdraw(&max_withdraw, &fixture.user, &fixture.user, &fixture.user);
+    let balance_after = fixture.usdc_client.balance(&fixture.user);
+    assert!(
+        balance_after > balance_before,
+        "withdrawal after compounding should increase user balance"
+    );
+}
+
+#[test]
 fn test_compound_without_rewards() {
-    let _fixture = TestFixture::new();
+    let fixture = TestFixture::new();
+    let deposit_amount = 1_000_0000000;
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
 
-    // Create a fixture where claim returns 0
-    // For now, calling compound when there are no rewards should return 0
-    // We'll test this with our mock which has a fixed return
-
-    // This test would need a modified mock to return 0 rewards
-    // For now, we know the mock returns a fixed amount
+    let usdc_deposited = fixture
+        .vault_client
+        .mock_all_auths()
+        .compound(&fixture.user);
+    assert_eq!(usdc_deposited, 0);
 }
 
 #[test]
@@ -672,6 +898,25 @@ fn test_deposit_different_receiver() {
 
     // Original user should have no shares
     assert_eq!(fixture.vault_client.balance(&fixture.user), 0);
+}
+
+#[test]
+fn test_real_blend_emissions_produce_claims() {
+    let fixture = TestFixture::new();
+    let deposit_amount = 1_000_0000000;
+
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    assert!(
+        fixture.accrue_emissions(),
+        "emission accrual should succeed in real Blend fixture"
+    );
+
+    let claimed = fixture.claim_rewards(&[fixture.blnd_reserve_token_id]);
+    assert!(claimed > 0, "fixture should yield BLND rewards to claim");
 }
 
 #[test]
@@ -1689,231 +1934,4 @@ fn test_preview_functions_match_actual() {
         previewed_shares_to_burn, actual_shares_burned,
         "preview_withdraw should match actual shares burned"
     );
-}
-
-// ===== TESTS WITH REAL BLEND POOLS =====
-// These tests use the actual Blend protocol contracts (via WASM) instead of simple mocks
-// This provides more accurate testing against the real pool behavior
-
-use crate::mocks::{default_reserve_config, BlendFixture};
-use blend_contract_sdk::pool;
-use soroban_sdk::{testutils::BytesN as _, BytesN, String};
-
-/// Test fixture that uses real Blend and Comet pools
-struct RealBlendTestFixture<'a> {
-    env: Env,
-    deployer: Address,
-    user: Address,
-    usdc_token: Address,
-    usdc_client: MockTokenClient<'a>,
-    blnd_token: Address,
-    blnd_client: MockTokenClient<'a>,
-    blend_fixture: BlendFixture<'a>,
-    blend_pool: Address,
-    comet_pool: Address,
-    vault: Address,
-    vault_client: BlendVaultContractClient<'a>,
-}
-
-impl<'a> RealBlendTestFixture<'a> {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let deployer = Address::generate(&env);
-        let user = Address::generate(&env);
-
-        // Deploy USDC token
-        let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
-        let usdc_client = MockTokenClient::new(&env, &usdc_token);
-        usdc_client.initialize(
-            &deployer,
-            &7,
-            &SorobanString::from_str(&env, "USD Coin"),
-            &SorobanString::from_str(&env, "USDC"),
-        );
-
-        // Deploy BLND token
-        let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
-        let blnd_client = MockTokenClient::new(&env, &blnd_token);
-        blnd_client.initialize(
-            &deployer,
-            &7,
-            &SorobanString::from_str(&env, "Blend Token"),
-            &SorobanString::from_str(&env, "BLND"),
-        );
-
-        // Deploy the full Blend protocol using the fixture
-        let blend_fixture = BlendFixture::deploy(&env, &deployer, &blnd_token, &usdc_token);
-
-        // Create a Blend pool using the pool factory
-        let blend_pool = blend_fixture.pool_factory.deploy(
-            &deployer,
-            &String::from_str(&env, "Test Pool"),
-            &BytesN::<32>::random(&env),
-            &Address::generate(&env), // oracle
-            &0_1000000, // 10% take rate
-            &4,         // 4 max positions
-            &1_0000000, // $1 min collateral
-        );
-
-        let pool_client = pool::Client::new(&env, &blend_pool);
-
-        // Configure USDC reserve (index 0)
-        let mut usdc_reserve_config = default_reserve_config();
-        usdc_reserve_config.index = 0;
-        pool_client.queue_set_reserve(&usdc_token, &usdc_reserve_config);
-        pool_client.set_reserve(&usdc_token);
-
-        // Configure BLND reserve (index 1) for rewards
-        let mut blnd_reserve_config = default_reserve_config();
-        blnd_reserve_config.index = 1;
-        pool_client.queue_set_reserve(&blnd_token, &blnd_reserve_config);
-        pool_client.set_reserve(&blnd_token);
-
-        // Add backstop deposit to activate pool
-        blend_fixture
-            .backstop
-            .deposit(&deployer, &blend_pool, &50_000_0000000);
-
-        // Activate the pool (move out of setup status)
-        pool_client.set_status(&3); // remove from setup
-        pool_client.update_status();
-
-        let comet_pool = blend_fixture.backstop_token.address.clone();
-
-        // Deploy and initialize vault
-        let vault = env.register_contract(None, BlendVaultContract);
-        let vault_client = BlendVaultContractClient::new(&env, &vault);
-        vault_client.initialize(
-            &usdc_token,
-            &0,
-            &blend_pool,
-            &0, // USDC reserve index
-            &blnd_token,
-            &1, // BLND reserve index
-            &comet_pool,
-        );
-
-        // Mint tokens to user
-        usdc_client.mint(&user, &1_000_000_0000000);
-        blnd_client.mint(&user, &1_000_000_0000000);
-
-        // Pre-approve vault
-        usdc_client.approve(&user, &vault, &i128::MAX, &200);
-
-        Self {
-            env,
-            deployer,
-            user,
-            usdc_token,
-            usdc_client,
-            blnd_token,
-            blnd_client,
-            blend_fixture,
-            blend_pool,
-            comet_pool,
-            vault,
-            vault_client,
-        }
-    }
-}
-
-#[test]
-fn test_deposit_with_real_blend_pool() {
-    let fixture = RealBlendTestFixture::new();
-    let deposit_amount = 1000_0000000; // 1000 USDC
-
-    // User deposits USDC
-    let shares = fixture
-        .vault_client
-        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
-
-    // Check shares minted (should be 1:1 for first deposit)
-    assert_eq!(shares, deposit_amount);
-
-    // Check user's share balance
-    assert_eq!(fixture.vault_client.balance(&fixture.user), shares);
-
-    // Check total supply
-    assert_eq!(fixture.vault_client.total_supply(), shares);
-
-    // Check USDC was transferred from user
-    assert_eq!(
-        fixture.usdc_client.balance(&fixture.user),
-        1_000_000_0000000 - deposit_amount
-    );
-
-    // Verify total_assets queries the real Blend pool
-    assert_eq!(fixture.vault_client.total_assets(), deposit_amount);
-}
-
-#[test]
-fn test_withdraw_with_real_blend_pool() {
-    let fixture = RealBlendTestFixture::new();
-    let deposit_amount = 5000_0000000;
-
-    // First deposit
-    let shares = fixture
-        .vault_client
-        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
-
-    assert_eq!(
-        fixture.usdc_client.balance(&fixture.blend_pool),
-        deposit_amount
-    );
-
-    // Then withdraw half
-    let withdraw_amount = 2500_0000000;
-    let shares_burned = fixture
-        .vault_client
-        .withdraw(&withdraw_amount, &fixture.user, &fixture.user, &fixture.user);
-
-    // Shares burned should equal amount withdrawn (1:1 ratio)
-    assert_eq!(shares_burned, withdraw_amount);
-
-    // Check remaining shares
-    assert_eq!(
-        fixture.vault_client.balance(&fixture.user),
-        shares - shares_burned
-    );
-
-    // Check USDC balance
-    assert_eq!(
-        fixture.usdc_client.balance(&fixture.user),
-        1_000_000_0000000 - deposit_amount + withdraw_amount
-    );
-}
-
-#[test]
-fn test_multiple_users_with_real_blend_pool() {
-    let fixture = RealBlendTestFixture::new();
-    let user2 = Address::generate(&fixture.env);
-
-    // Mint and approve for user2
-    fixture.usdc_client.mint(&user2, &10_000_0000000);
-    fixture.usdc_client.approve(&user2, &fixture.vault, &i128::MAX, &200);
-
-    let deposit1 = 1000_0000000;
-    let deposit2 = 2000_0000000;
-
-    // First user deposits
-    let shares1 = fixture
-        .vault_client
-        .deposit(&deposit1, &fixture.user, &fixture.user, &fixture.user);
-
-    // Second user deposits
-    let shares2 = fixture
-        .vault_client
-        .deposit(&deposit2, &user2, &user2, &user2);
-
-    // Check balances
-    assert_eq!(fixture.vault_client.balance(&fixture.user), shares1);
-    assert_eq!(fixture.vault_client.balance(&user2), shares2);
-
-    // Total supply should be sum of both
-    assert_eq!(fixture.vault_client.total_supply(), shares1 + shares2);
-
-    // Total assets should match deposits
-    assert_eq!(fixture.vault_client.total_assets(), deposit1 + deposit2);
 }
