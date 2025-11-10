@@ -1473,13 +1473,12 @@ fn test_sequential_deposits_and_withdrawals() {
         "User2 should still have 200 USDC"
     );
 
-    // Total assets should be 275 USDC
+    // Total assets should be 275 USDC (no automatic compounding anymore)
     let total_assets = fixture.vault_client.total_assets();
-    let blendRewardsCompounded = 10000000000;
     assert_eq!(
         total_assets,
-        expected_user1 + deposit2 + blendRewardsCompounded,
-        "Total assets should be equal to 1275 USDC"
+        expected_user1 + deposit2,
+        "Total assets should be equal to 275 USDC"
     );
 }
 

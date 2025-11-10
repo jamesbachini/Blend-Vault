@@ -271,6 +271,13 @@ impl BlendVaultContract {
     /// 3. Deposits USDC back into Blend pool
     ///
     /// Returns the amount of USDC deposited back into the pool
+    ///
+    /// Note: This function may fail if:
+    /// - No BLND rewards are available (returns 0)
+    /// - Swap fails due to insufficient liquidity or invalid parameters
+    /// - BLND amount is too small to swap economically
+    ///
+    /// Compounding is now OPTIONAL - withdrawals will work without it
     pub fn compound(e: &Env) -> i128 {
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
@@ -285,22 +292,20 @@ impl BlendVaultContract {
         reserve_ids.push_back(blnd_index);
 
         let blnd_claimed = pool_client.claim(&vault_address, &reserve_ids, &vault_address);
-
-        // If no BLND claimed, return early
-        if blnd_claimed <= 0 {
-            return 0;
-        }
-
+        
         // Step 2: Swap BLND for USDC on Comet
         let comet_client = CometPoolClient::new(e, &comet_pool);
 
-        // Authorize the Comet pool's token operations during swap
-        // The Comet pool calls approve on the BLND token, then transfer_from
-        // We need to authorize the approve call and the subsequent transfer
+        // Create token client for BLND
+        let blnd_token_client = token::TokenClient::new(e, &blnd_token);
+
+        // Approve Comet pool to spend BLND tokens on behalf of vault
+        // The Comet pool will call transfer_from to pull the BLND tokens
         let expiration_ledger = e.ledger().sequence() + 100000; // ~5.7 days
+
+        // Authorize the vault to approve Comet pool
         e.authorize_as_current_contract(vec![
             e,
-            // Authorize approve call
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
                     contract: blnd_token.clone(),
@@ -315,23 +320,17 @@ impl BlendVaultContract {
                 },
                 sub_invocations: vec![e],
             }),
-            // Authorize transfer call
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: blnd_token.clone(),
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (
-                        vault_address.clone(),
-                        comet_pool.clone(),
-                        blnd_claimed,
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
         ]);
 
-        // Use a reasonable slippage tolerance (0.5% = 0.005)
+        // Call approve to allow Comet pool to spend BLND
+        blnd_token_client.approve(
+            &vault_address,
+            &comet_pool,
+            &blnd_claimed,
+            &expiration_ledger,
+        );
+
+        // Call swap on Comet pool
         // min_amount_out = 0 for now (can be improved with price oracle)
         // max_price = i128::MAX to accept any price
         let (usdc_received, _) = comet_client.swap_exact_amount_in(
@@ -647,9 +646,6 @@ impl FungibleVault for BlendVaultContract {
         #[cfg(not(test))]
         operator.require_auth();
 
-        // Try to compound rewards before withdrawal
-        Self::try_compound(e);
-
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
@@ -713,9 +709,6 @@ impl FungibleVault for BlendVaultContract {
     ) -> i128 {
         #[cfg(not(test))]
         operator.require_auth();
-
-        // Try to compound rewards before redemption
-        Self::try_compound(e);
 
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();

@@ -21,6 +21,11 @@ stellar-tokens = "0.5.0"
 stellar-access = "0.5.0"
 stellar-contract-utils = "0.5.0"
 stellar-macros = "0.5.0"
+blend-contract-sdk = { git = "https://github.com/kalepail/blend-contract-sdk", features = ["testutils"] }
+soroban-fixed-point-math = { git = "https://github.com/kalepail/soroban-fixed-point-math" }
+
+[package.metadata.cargo-test]
+test-timeout = 300
 
 [profile.release]
 opt-level = "z"
