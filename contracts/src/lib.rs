@@ -2,13 +2,14 @@
 
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contractclient, contractevent, contractimpl, contracttype, token, vec, Address,
-    Env, IntoVal, Map, String, Symbol, Vec,
+    contract, contractclient, contractevent, contractimpl, contracttype, panic_with_error, token,
+    vec, Address, Env, IntoVal, Map, String, Symbol, Vec,
 };
+use stellar_contract_utils::math::fixed_point::{muldiv, Rounding};
 use stellar_macros::default_impl;
 use stellar_tokens::{
     fungible::{Base, FungibleToken},
-    vault::{FungibleVault, Vault},
+    vault::{FungibleVault, Vault, VaultTokenError},
 };
 
 #[contract]
@@ -142,6 +143,13 @@ pub(crate) const BLEND_RATE_SCALAR: i128 = 1_000_000_000_000;
 #[contractclient(name = "BlendPoolClient")]
 pub trait BlendPoolInterface {
     fn submit(
+        env: Env,
+        from: Address,
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions;
+    fn submit_with_allowance(
         env: Env,
         from: Address,
         spender: Address,
@@ -421,25 +429,40 @@ impl BlendVaultContract {
             amount: usdc_received,
         });
 
-        // Authorize the Blend pool to transfer USDC from vault to itself
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: usdc_token,
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (
-                        vault_address.clone(),
-                        pool_address.clone(),
-                        usdc_received,
-                    )
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if usdc_received > 0 {
+            let expiration_ledger = e.ledger().sequence() + 1000;
+            let usdc_token_client = token::TokenClient::new(e, &usdc_token);
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: usdc_token.clone(),
+                        fn_name: Symbol::new(e, "approve"),
+                        args: (
+                            vault_address.clone(),
+                            pool_address.clone(),
+                            usdc_received,
+                            expiration_ledger,
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+            usdc_token_client.approve(
+                &vault_address,
+                &pool_address,
+                &usdc_received,
+                &expiration_ledger,
+            );
+        }
 
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
+        pool_client.submit_with_allowance(
+            &vault_address,
+            &vault_address,
+            &vault_address,
+            &requests,
+        );
 
         // Emit compound event
         CompoundEvent {
@@ -491,6 +514,48 @@ impl BlendVaultContract {
 
         snapshot
     }
+
+    fn convert_assets_to_shares(e: &Env, assets: i128, rounding: Rounding) -> i128 {
+        if assets < 0 {
+            panic_with_error!(e, VaultTokenError::VaultInvalidAssetsAmount);
+        }
+        if assets == 0 {
+            return 0;
+        }
+
+        let pow = 10_i128
+            .checked_pow(Vault::get_decimals_offset(e))
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+        let effective_supply = Base::total_supply(e)
+            .checked_add(pow)
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+        let effective_assets = Self::total_assets(e)
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+
+        muldiv(e, assets, effective_supply, effective_assets, rounding)
+    }
+
+    fn convert_shares_to_assets(e: &Env, shares: i128, rounding: Rounding) -> i128 {
+        if shares < 0 {
+            panic_with_error!(e, VaultTokenError::VaultInvalidSharesAmount);
+        }
+        if shares == 0 {
+            return 0;
+        }
+
+        let pow = 10_i128
+            .checked_pow(Vault::get_decimals_offset(e))
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+        let effective_supply = Base::total_supply(e)
+            .checked_add(pow)
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+        let effective_assets = Self::total_assets(e)
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(e, VaultTokenError::MathOverflow));
+
+        muldiv(e, shares, effective_assets, effective_supply, rounding)
+    }
 }
 
 #[default_impl]
@@ -532,11 +597,11 @@ impl FungibleVault for BlendVaultContract {
     }
 
     fn convert_to_shares(e: &Env, assets: i128) -> i128 {
-        Vault::convert_to_shares(e, assets)
+        Self::convert_assets_to_shares(e, assets, Rounding::Floor)
     }
 
     fn convert_to_assets(e: &Env, shares: i128) -> i128 {
-        Vault::convert_to_assets(e, shares)
+        Self::convert_shares_to_assets(e, shares, Rounding::Floor)
     }
 
     fn max_deposit(e: &Env, receiver: Address) -> i128 {
@@ -544,7 +609,7 @@ impl FungibleVault for BlendVaultContract {
     }
 
     fn preview_deposit(e: &Env, assets: i128) -> i128 {
-        Vault::preview_deposit(e, assets)
+        Self::convert_assets_to_shares(e, assets, Rounding::Floor)
     }
 
     fn max_mint(e: &Env, receiver: Address) -> i128 {
@@ -552,15 +617,16 @@ impl FungibleVault for BlendVaultContract {
     }
 
     fn preview_mint(e: &Env, shares: i128) -> i128 {
-        Vault::preview_mint(e, shares)
+        Self::convert_shares_to_assets(e, shares, Rounding::Ceil)
     }
 
     fn max_withdraw(e: &Env, owner: Address) -> i128 {
-        Vault::max_withdraw(e, owner)
+        let balance = Base::balance(e, &owner);
+        Self::convert_shares_to_assets(e, balance, Rounding::Floor)
     }
 
     fn preview_withdraw(e: &Env, assets: i128) -> i128 {
-        Vault::preview_withdraw(e, assets)
+        Self::convert_assets_to_shares(e, assets, Rounding::Ceil)
     }
 
     fn max_redeem(e: &Env, owner: Address) -> i128 {
@@ -568,7 +634,7 @@ impl FungibleVault for BlendVaultContract {
     }
 
     fn preview_redeem(e: &Env, shares: i128) -> i128 {
-        Vault::preview_redeem(e, shares)
+        Self::convert_shares_to_assets(e, shares, Rounding::Floor)
     }
 
     /// Deposit assets into the vault and supply to Blend
@@ -586,17 +652,32 @@ impl FungibleVault for BlendVaultContract {
         let pool_address = Self::get_blend_pool(e);
 
         // Calculate shares to mint
-        let shares = Vault::preview_deposit(e, assets);
+        let shares = Self::convert_assets_to_shares(e, assets, Rounding::Floor);
 
         // Transfer USDC from user to vault using transfer_from
         // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer_from"),
+                    args: (
+                        vault_address.clone(),
+                        from.clone(),
+                        vault_address.clone(),
+                        assets,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
         token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
         let pool_client = BlendPoolClient::new(e, &pool_address);
-
-        // Create supply request
         let mut requests: Vec<Request> = Vec::new(e);
         requests.push_back(Request {
             request_type: REQUEST_TYPE_SUPPLY_COLLATERAL,
@@ -604,22 +685,39 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        // Authorize the Blend pool to transfer USDC from vault to itself
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (vault_address.clone(), pool_address.clone(), assets)
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if assets > 0 {
+            let expiration_ledger = e.ledger().sequence() + 1000;
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: asset.clone(),
+                        fn_name: Symbol::new(e, "approve"),
+                        args: (
+                            vault_address.clone(),
+                            pool_address.clone(),
+                            assets,
+                            expiration_ledger,
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+            token_client.approve(
+                &vault_address,
+                &pool_address,
+                &assets,
+                &expiration_ledger,
+            );
+        }
 
-        // Submit the supply request to Blend (vault already has the USDC)
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
+        pool_client.submit_with_allowance(
+            &vault_address,
+            &vault_address,
+            &vault_address,
+            &requests,
+        );
 
         // Mint shares to receiver
         Base::mint(e, &receiver, shares);
@@ -654,11 +752,28 @@ impl FungibleVault for BlendVaultContract {
         let pool_address = Self::get_blend_pool(e);
 
         // Calculate assets needed
-        let assets = Vault::preview_mint(e, shares);
+        let assets = Self::convert_shares_to_assets(e, shares, Rounding::Ceil);
 
         // Transfer USDC from user to vault using transfer_from
         // Requires user to have called usdc.approve(vault, assets) beforehand
         let token_client = token::TokenClient::new(e, &asset);
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: asset.clone(),
+                    fn_name: Symbol::new(e, "transfer_from"),
+                    args: (
+                        vault_address.clone(),
+                        from.clone(),
+                        vault_address.clone(),
+                        assets,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
         token_client.transfer_from(&vault_address, &from, &vault_address, &assets);
 
         // Supply USDC to Blend pool
@@ -671,21 +786,39 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        // Authorize the Blend pool to transfer USDC from vault to itself
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (vault_address.clone(), pool_address.clone(), assets)
-                        .into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
+        if assets > 0 {
+            let expiration_ledger = e.ledger().sequence() + 1000;
+            e.authorize_as_current_contract(vec![
+                e,
+                InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: asset.clone(),
+                        fn_name: Symbol::new(e, "approve"),
+                        args: (
+                            vault_address.clone(),
+                            pool_address.clone(),
+                            assets,
+                            expiration_ledger,
+                        )
+                            .into_val(e),
+                    },
+                    sub_invocations: vec![e],
+                }),
+            ]);
+            token_client.approve(
+                &vault_address,
+                &pool_address,
+                &assets,
+                &expiration_ledger,
+            );
+        }
 
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
+        pool_client.submit_with_allowance(
+            &vault_address,
+            &vault_address,
+            &vault_address,
+            &requests,
+        );
 
         // Mint shares to receiver
         Base::mint(e, &receiver, shares);
@@ -719,9 +852,10 @@ impl FungibleVault for BlendVaultContract {
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
+        let withdrawal_destination = receiver.clone();
 
         // Calculate shares to burn
-        let shares = Vault::preview_withdraw(e, assets);
+        let shares = Self::convert_assets_to_shares(e, assets, Rounding::Ceil);
 
         // Withdraw USDC from Blend pool
         let pool_client = BlendPoolClient::new(e, &pool_address);
@@ -733,27 +867,18 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
-
-        // Transfer USDC from vault to receiver (do this before burning to maintain auth context)
-        let token_client = token::TokenClient::new(e, &asset);
-
-        // Authorize the vault to transfer USDC to receiver
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (vault_address.clone(), receiver.clone(), assets).into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
-
-        token_client.transfer(&vault_address, &receiver, &assets);
+        pool_client.submit_with_allowance(
+            &vault_address,
+            &vault_address,
+            &withdrawal_destination,
+            &requests,
+        );
 
         // Burn shares from owner
+        let owner_balance = Base::balance(e, &owner);
+        if owner_balance < shares {
+            panic!("insufficient shares: have {}, need {}", owner_balance, shares);
+        }
         Base::burn(e, &owner, shares);
 
         // Emit withdraw event (ERC-4626 standard)
@@ -783,9 +908,10 @@ impl FungibleVault for BlendVaultContract {
         let asset = Vault::query_asset(e);
         let vault_address = e.current_contract_address();
         let pool_address = Self::get_blend_pool(e);
+        let withdrawal_destination = receiver.clone();
 
         // Calculate assets to withdraw
-        let assets = Vault::preview_redeem(e, shares);
+        let assets = Self::convert_shares_to_assets(e, shares, Rounding::Floor);
 
         // Withdraw USDC from Blend pool
         let pool_client = BlendPoolClient::new(e, &pool_address);
@@ -797,25 +923,12 @@ impl FungibleVault for BlendVaultContract {
             amount: assets,
         });
 
-        pool_client.submit(&vault_address, &vault_address, &vault_address, &requests);
-
-        // Transfer USDC from vault to receiver (do this before burning to maintain auth context)
-        let token_client = token::TokenClient::new(e, &asset);
-
-        // Authorize the vault to transfer USDC to receiver
-        e.authorize_as_current_contract(vec![
-            e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: asset.clone(),
-                    fn_name: Symbol::new(e, "transfer"),
-                    args: (vault_address.clone(), receiver.clone(), assets).into_val(e),
-                },
-                sub_invocations: vec![e],
-            }),
-        ]);
-
-        token_client.transfer(&vault_address, &receiver, &assets);
+        pool_client.submit_with_allowance(
+            &vault_address,
+            &vault_address,
+            &withdrawal_destination,
+            &requests,
+        );
 
         // Burn shares from owner
         Base::burn(e, &owner, shares);

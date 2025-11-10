@@ -12,6 +12,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Map
 pub enum MockPoolDataKey {
     Positions(Address),
     Reserve(Address),
+    RewardToken,
 }
 
 fn read_b_rate(env: &Env, asset: &Address) -> i128 {
@@ -64,25 +65,30 @@ pub struct MockBlendPool;
 
 #[contractimpl]
 impl MockBlendPool {
+    pub fn set_reward_token(env: Env, token: Address) {
+        env.storage()
+            .persistent()
+            .set(&MockPoolDataKey::RewardToken, &token);
+    }
+
     pub fn submit(
         env: Env,
-        _from: Address,
-        _spender: Address,
+        owner: Address,
+        spender: Address,
         to: Address,
         requests: Vec<Request>,
     ) -> Positions {
-        Self::process_requests(env, to, requests)
+        Self::process_requests(env, owner, spender, to, requests)
     }
 
     pub fn submit_with_allowance(
         env: Env,
-        _from: Address,
-        _spender: Address,
+        owner: Address,
+        spender: Address,
         to: Address,
         requests: Vec<Request>,
     ) -> Positions {
-        // Same implementation as submit - in the real contract this would handle allowances
-        Self::process_requests(env, to, requests)
+        Self::process_requests(env, owner, spender, to, requests)
     }
 
     pub fn set_b_rate(env: Env, asset: Address, b_rate: i128) {
@@ -93,119 +99,18 @@ impl MockBlendPool {
         build_reserve(asset.clone(), read_b_rate(&env, &asset))
     }
 
-    fn process_requests(env: Env, to: Address, requests: Vec<Request>) -> Positions {
-        // Get current positions from storage or create new
-        let mut positions: Positions = env
-            .storage()
-            .persistent()
-            .get(&MockPoolDataKey::Positions(to.clone()))
-            .unwrap_or_else(|| {
-                let supply_map: Map<u32, i128> = Map::new(&env);
-                let collateral_map: Map<u32, i128> = Map::new(&env);
-                let liabilities_map: Map<u32, i128> = Map::new(&env);
-                Positions {
-                    collateral: collateral_map,
-                    liabilities: liabilities_map,
-                    supply: supply_map,
-                }
-            });
-
-        // For each request, update the positions
-        for request in requests.iter() {
-            if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
-                let current = positions.collateral.get(0).unwrap_or(0);
-                positions.collateral.set(0, current + request.amount);
-            } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
-                let current = positions.collateral.get(0).unwrap_or(0);
-                positions.collateral.set(0, current - request.amount);
-            }
-        }
-
-        // Store updated positions
-        env.storage()
-            .persistent()
-            .set(&MockPoolDataKey::Positions(to.clone()), &positions);
-
-        positions
-    }
-
-    pub fn get_positions(env: Env, address: Address) -> Positions {
-        // Return the stored positions or empty positions
-        env.storage()
-            .persistent()
-            .get(&MockPoolDataKey::Positions(address))
-            .unwrap_or_else(|| {
-                let supply_map: Map<u32, i128> = Map::new(&env);
-                let collateral_map: Map<u32, i128> = Map::new(&env);
-                let liabilities_map: Map<u32, i128> = Map::new(&env);
-                Positions {
-                    collateral: collateral_map,
-                    liabilities: liabilities_map,
-                    supply: supply_map,
-                }
-            })
-    }
-
-    pub fn claim(
-        _env: Env,
-        _from: Address,
-        _reserve_token_ids: Vec<u32>,
-        _to: Address,
-    ) -> i128 {
-        // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
-        1000_0000000
-    }
-}
-
-// Mock Comet Pool Contract for DEX swaps
-#[contract]
-pub struct MockCometPool;
-
-#[contractimpl]
-impl MockCometPool {
-    pub fn swap_exact_amount_in(
-        _env: Env,
-        _token_in: Address,
-        token_amount_in: i128,
-        _token_out: Address,
-        _min_amount_out: i128,
-        _max_price: i128,
-        _user: Address,
-    ) -> (i128, i128) {
-        // Simple 1:1 mock swap ratio for testing
-        // In reality BLND:USDC would have a different ratio
-        let amount_out = token_amount_in;
-        let spot_price = 1_0000000; // Mock spot price
-
-        // For simplicity in tests, we don't actually transfer tokens
-        // The mock just returns the swap amounts
-
-        (amount_out, spot_price)
-    }
-}
-
-// Improved Mock Blend Pool that actually transfers tokens like the real pool
-#[contract]
-pub struct RealisticMockBlendPool;
-
-#[contractimpl]
-impl RealisticMockBlendPool {
-    pub fn submit(
+    fn process_requests(
         env: Env,
-        _from: Address,
-        _spender: Address,
+        owner: Address,
+        spender: Address,
         to: Address,
         requests: Vec<Request>,
     ) -> Positions {
-        Self::process_requests(env, to, requests)
-    }
-
-    fn process_requests(env: Env, to: Address, requests: Vec<Request>) -> Positions {
         // Get current positions from storage or create new
         let mut positions: Positions = env
             .storage()
             .persistent()
-            .get(&MockPoolDataKey::Positions(to.clone()))
+            .get(&MockPoolDataKey::Positions(owner.clone()))
             .unwrap_or_else(|| {
                 let supply_map: Map<u32, i128> = Map::new(&env);
                 let collateral_map: Map<u32, i128> = Map::new(&env);
@@ -219,23 +124,14 @@ impl RealisticMockBlendPool {
 
         let pool_address = env.current_contract_address();
 
-        // For each request, update the positions AND handle token transfers
         for request in requests.iter() {
             let token_client = token::TokenClient::new(&env, &request.address);
-
             if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
-                // For SUPPLY_COLLATERAL: Transfer tokens from vault to pool
-                // The vault has pre-authorized this transfer via authorize_as_current_contract
-                token_client.transfer(&to, &pool_address, &request.amount);
-
-                // Update collateral position
+                token_client.transfer_from(&pool_address, &spender, &pool_address, &request.amount);
                 let current = positions.collateral.get(0).unwrap_or(0);
                 positions.collateral.set(0, current + request.amount);
             } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
-                // For WITHDRAW_COLLATERAL: Transfer tokens from pool back to the vault
                 token_client.transfer(&pool_address, &to, &request.amount);
-
-                // Update collateral position
                 let current = positions.collateral.get(0).unwrap_or(0);
                 positions.collateral.set(0, current - request.amount);
             }
@@ -244,7 +140,7 @@ impl RealisticMockBlendPool {
         // Store updated positions
         env.storage()
             .persistent()
-            .set(&MockPoolDataKey::Positions(to.clone()), &positions);
+            .set(&MockPoolDataKey::Positions(owner.clone()), &positions);
 
         positions
     }
@@ -267,13 +163,178 @@ impl RealisticMockBlendPool {
     }
 
     pub fn claim(
-        _env: Env,
+        env: Env,
         _from: Address,
         _reserve_token_ids: Vec<u32>,
-        _to: Address,
+        to: Address,
     ) -> i128 {
         // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
-        1000_0000000
+        let amount = 1000_0000000;
+        if let Some(reward_token) = env
+            .storage()
+            .persistent()
+            .get(&MockPoolDataKey::RewardToken)
+        {
+            let token_client = token::TokenClient::new(&env, &reward_token);
+            token_client.transfer(&env.current_contract_address(), &to, &amount);
+        }
+        amount
+    }
+}
+
+// Mock Comet Pool Contract for DEX swaps
+#[contract]
+pub struct MockCometPool;
+
+#[contractimpl]
+impl MockCometPool {
+    pub fn swap_exact_amount_in(
+        env: Env,
+        token_in: Address,
+        token_amount_in: i128,
+        token_out: Address,
+        min_amount_out: i128,
+        _max_price: i128,
+        user: Address,
+    ) -> (i128, i128) {
+        // Simple 1:1 mock swap ratio for testing
+        // In reality BLND:USDC would have a different ratio
+        let amount_out = token_amount_in;
+        if amount_out < min_amount_out {
+            panic!("insufficient output amount");
+        }
+
+        let contract = env.current_contract_address();
+
+        // Pull BLND (or token_in) from the caller using allowance
+        let token_in_client = token::TokenClient::new(&env, &token_in);
+        token_in_client.transfer_from(&contract, &user, &contract, &token_amount_in);
+
+        // Send token_out (USDC) from the pool to the user
+        let token_out_client = token::TokenClient::new(&env, &token_out);
+        token_out_client.transfer(&contract, &user, &amount_out);
+
+        let spot_price = 1_0000000; // Mock spot price
+
+        (amount_out, spot_price)
+    }
+}
+
+// Improved Mock Blend Pool that actually transfers tokens like the real pool
+#[contract]
+pub struct RealisticMockBlendPool;
+
+#[contractimpl]
+impl RealisticMockBlendPool {
+    pub fn set_reward_token(env: Env, token: Address) {
+        env.storage()
+            .persistent()
+            .set(&MockPoolDataKey::RewardToken, &token);
+    }
+
+    pub fn submit(
+        env: Env,
+        owner: Address,
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        Self::process_requests(env, owner, spender, to, requests)
+    }
+
+    pub fn submit_with_allowance(
+        env: Env,
+        owner: Address,
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        Self::process_requests(env, owner, spender, to, requests)
+    }
+
+    fn process_requests(
+        env: Env,
+        owner: Address,
+        spender: Address,
+        to: Address,
+        requests: Vec<Request>,
+    ) -> Positions {
+        // Get current positions from storage or create new
+        let mut positions: Positions = env
+            .storage()
+            .persistent()
+            .get(&MockPoolDataKey::Positions(owner.clone()))
+            .unwrap_or_else(|| {
+                let supply_map: Map<u32, i128> = Map::new(&env);
+                let collateral_map: Map<u32, i128> = Map::new(&env);
+                let liabilities_map: Map<u32, i128> = Map::new(&env);
+                Positions {
+                    collateral: collateral_map,
+                    liabilities: liabilities_map,
+                    supply: supply_map,
+                }
+            });
+
+        let pool_address = env.current_contract_address();
+
+        for request in requests.iter() {
+            let token_client = token::TokenClient::new(&env, &request.address);
+
+            if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
+                token_client.transfer_from(&pool_address, &spender, &pool_address, &request.amount);
+
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current + request.amount);
+            } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
+                token_client.transfer(&pool_address, &to, &request.amount);
+
+                let current = positions.collateral.get(0).unwrap_or(0);
+                positions.collateral.set(0, current - request.amount);
+            }
+        }
+
+        // Store updated positions
+        env.storage()
+            .persistent()
+            .set(&MockPoolDataKey::Positions(owner.clone()), &positions);
+
+        positions
+    }
+
+    pub fn get_positions(env: Env, address: Address) -> Positions {
+        // Return the stored positions or empty positions
+        env.storage()
+            .persistent()
+            .get(&MockPoolDataKey::Positions(address))
+            .unwrap_or_else(|| {
+                let supply_map: Map<u32, i128> = Map::new(&env);
+                let collateral_map: Map<u32, i128> = Map::new(&env);
+                let liabilities_map: Map<u32, i128> = Map::new(&env);
+                Positions {
+                    collateral: collateral_map,
+                    liabilities: liabilities_map,
+                    supply: supply_map,
+                }
+            })
+    }
+
+    pub fn claim(
+        env: Env,
+        _from: Address,
+        _reserve_token_ids: Vec<u32>,
+        to: Address,
+    ) -> i128 {
+        // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
+        let amount = 1000_0000000;
+        if let Some(reward_token) = env
+            .storage()
+            .persistent()
+            .get(&MockPoolDataKey::RewardToken)
+        {
+            let token_client = token::TokenClient::new(&env, &reward_token);
+            token_client.transfer(&env.current_contract_address(), &to, &amount);
+        }
+        amount
     }
 
     pub fn set_b_rate(env: Env, asset: Address, b_rate: i128) {

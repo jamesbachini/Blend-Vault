@@ -1,5 +1,8 @@
 use super::*;
-use crate::mocks::{MockBlendPool, MockBlendPoolClient, MockCometPool, RealisticMockBlendPool};
+use crate::mocks::{
+    MockBlendPool, MockBlendPoolClient, MockCometPool, RealisticMockBlendPool,
+    RealisticMockBlendPoolClient,
+};
 use sep_41_token::testutils::{MockTokenClient, MockTokenWASM};
 use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
 
@@ -46,8 +49,11 @@ impl<'a> TestFixture<'a> {
             &SorobanString::from_str(&env, "BLND"),
         );
 
-        // Deploy mock Blend Pool
-        let blend_pool = env.register_contract(None, MockBlendPool);
+        // Deploy Blend Pool with realistic transfers
+        let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+        let realistic_pool_client =
+            RealisticMockBlendPoolClient::new(&env, &blend_pool);
+        realistic_pool_client.set_reward_token(&blnd_token);
 
         // Deploy mock Comet Pool
         let comet_pool = env.register_contract(None, MockCometPool);
@@ -205,6 +211,10 @@ fn test_withdraw() {
         .vault_client
         .mock_all_auths()
         .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+    assert_eq!(
+        fixture.vault_client.balance(&fixture.user),
+        deposit_amount
+    );
 
     // Then withdraw half
     let withdraw_amount = 500_0000000;
@@ -1005,6 +1015,9 @@ fn test_deposit_with_authorization() {
 
     // Deploy realistic mock pool that requires authorization
     let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+    let realistic_pool_client =
+        RealisticMockBlendPoolClient::new(&env, &blend_pool);
+    realistic_pool_client.set_reward_token(&blnd_token);
 
     // Deploy mock Comet Pool
     let comet_pool = env.register_contract(None, MockCometPool);
@@ -1022,9 +1035,8 @@ fn test_deposit_with_authorization() {
         &comet_pool,
     );
 
-    // Mint USDC to user and to pool (for withdrawals)
-    usdc_client.mint(&user, &10_000_0000000);
-    usdc_client.mint(&blend_pool, &10_000_0000000); // Pool needs USDC for withdrawals
+        // Mint USDC to user
+        usdc_client.mint(&user, &10_000_0000000);
 
     let deposit_amount = 1000_0000000;
 
@@ -1039,7 +1051,7 @@ fn test_deposit_with_authorization() {
     assert_eq!(vault_client.balance(&user), shares);
 
     // Verify USDC was actually transferred to the pool
-    assert_eq!(usdc_client.balance(&blend_pool), 10_000_0000000 + deposit_amount);
+    assert_eq!(usdc_client.balance(&blend_pool), deposit_amount);
 
     // Verify total assets
     assert_eq!(vault_client.total_assets(), deposit_amount);
@@ -1144,6 +1156,9 @@ fn test_multiple_deposits_with_auth() {
 
     // Deploy realistic mock pool
     let blend_pool = env.register_contract(None, RealisticMockBlendPool);
+    let realistic_pool_client =
+        RealisticMockBlendPoolClient::new(&env, &blend_pool);
+    realistic_pool_client.set_reward_token(&blnd_token);
     let comet_pool = env.register_contract(None, MockCometPool);
 
     // Deploy and initialize vault
@@ -1162,7 +1177,6 @@ fn test_multiple_deposits_with_auth() {
     // Mint USDC to both users
     usdc_client.mint(&user1, &10_000_0000000);
     usdc_client.mint(&user2, &10_000_0000000);
-    usdc_client.mint(&blend_pool, &100_000_0000000);
 
     // Both users deposit
     let deposit1 = 1000_0000000;
@@ -1783,7 +1797,6 @@ impl<'a> RealBlendTestFixture<'a> {
 
         // Mint tokens to user
         usdc_client.mint(&user, &1_000_000_0000000);
-        usdc_client.mint(&blend_pool, &1_000_000_0000000);
         blnd_client.mint(&user, &1_000_000_0000000);
 
         // Pre-approve vault
@@ -1836,7 +1849,6 @@ fn test_deposit_with_real_blend_pool() {
 }
 
 #[test]
-#[ignore = "Blend fixture withdraw still fails with contract error 100; needs follow-up once pool auth flow is replicated locally"]
 fn test_withdraw_with_real_blend_pool() {
     let fixture = RealBlendTestFixture::new();
     let deposit_amount = 5000_0000000;
