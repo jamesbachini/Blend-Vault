@@ -773,3 +773,6 @@ impl FungibleVault for BlendVaultContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod mocks;
