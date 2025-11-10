@@ -1,7 +1,9 @@
 #![cfg(test)]
 
-use crate::{Positions, Request, REQUEST_TYPE_SUPPLY_COLLATERAL, REQUEST_TYPE_WITHDRAW_COLLATERAL};
-use sep_41_token::testutils::MockTokenClient;
+use crate::{
+    Positions, Request, Reserve, ReserveConfig, ReserveData, BLEND_RATE_SCALAR,
+    REQUEST_TYPE_SUPPLY_COLLATERAL, REQUEST_TYPE_WITHDRAW_COLLATERAL,
+};
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Map, Vec};
 
 // Storage keys for MockBlendPool
@@ -9,6 +11,51 @@ use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Map
 #[derive(Clone)]
 pub enum MockPoolDataKey {
     Positions(Address),
+    Reserve(Address),
+}
+
+fn read_b_rate(env: &Env, asset: &Address) -> i128 {
+    env.storage()
+        .persistent()
+        .get(&MockPoolDataKey::Reserve(asset.clone()))
+        .unwrap_or(BLEND_RATE_SCALAR)
+}
+
+fn store_b_rate(env: &Env, asset: &Address, b_rate: i128) {
+    env.storage()
+        .persistent()
+        .set(&MockPoolDataKey::Reserve(asset.clone()), &b_rate);
+}
+
+fn build_reserve(asset: Address, b_rate: i128) -> Reserve {
+    Reserve {
+        asset: asset.clone(),
+        config: ReserveConfig {
+            index: 0,
+            decimals: 7,
+            c_factor: 0,
+            l_factor: 0,
+            util: 0,
+            max_util: 0,
+            r_base: 0,
+            r_one: 0,
+            r_two: 0,
+            r_three: 0,
+            reactivity: 0,
+            supply_cap: i128::MAX,
+            enabled: true,
+        },
+        data: ReserveData {
+            d_rate: BLEND_RATE_SCALAR,
+            b_rate,
+            ir_mod: 0,
+            b_supply: 0,
+            d_supply: 0,
+            backstop_credit: 0,
+            last_time: 0,
+        },
+        scalar: 10i128.pow(7),
+    }
 }
 
 // Mock Blend Pool Contract
@@ -38,6 +85,14 @@ impl MockBlendPool {
         Self::process_requests(env, to, requests)
     }
 
+    pub fn set_b_rate(env: Env, asset: Address, b_rate: i128) {
+        store_b_rate(&env, &asset, b_rate);
+    }
+
+    pub fn get_reserve(env: Env, asset: Address) -> Reserve {
+        build_reserve(asset.clone(), read_b_rate(&env, &asset))
+    }
+
     fn process_requests(env: Env, to: Address, requests: Vec<Request>) -> Positions {
         // Get current positions from storage or create new
         let mut positions: Positions = env
@@ -58,11 +113,9 @@ impl MockBlendPool {
         // For each request, update the positions
         for request in requests.iter() {
             if request.request_type == REQUEST_TYPE_SUPPLY_COLLATERAL {
-                // Get current collateral and add to it
                 let current = positions.collateral.get(0).unwrap_or(0);
                 positions.collateral.set(0, current + request.amount);
             } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
-                // Get current collateral and subtract from it
                 let current = positions.collateral.get(0).unwrap_or(0);
                 positions.collateral.set(0, current - request.amount);
             }
@@ -179,10 +232,8 @@ impl RealisticMockBlendPool {
                 let current = positions.collateral.get(0).unwrap_or(0);
                 positions.collateral.set(0, current + request.amount);
             } else if request.request_type == REQUEST_TYPE_WITHDRAW_COLLATERAL {
-                // For WITHDRAW_COLLATERAL: Mint tokens to vault to simulate the pool returning funds
-                // We use mint instead of transfer to avoid MockToken authorization issues
-                let mock_token_client = MockTokenClient::new(&env, &request.address);
-                mock_token_client.mint(&to, &request.amount);
+                // For WITHDRAW_COLLATERAL: Transfer tokens from pool back to the vault
+                token_client.transfer(&pool_address, &to, &request.amount);
 
                 // Update collateral position
                 let current = positions.collateral.get(0).unwrap_or(0);
@@ -223,5 +274,13 @@ impl RealisticMockBlendPool {
     ) -> i128 {
         // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
         1000_0000000
+    }
+
+    pub fn set_b_rate(env: Env, asset: Address, b_rate: i128) {
+        store_b_rate(&env, &asset, b_rate);
+    }
+
+    pub fn get_reserve(env: Env, asset: Address) -> Reserve {
+        build_reserve(asset.clone(), read_b_rate(&env, &asset))
     }
 }

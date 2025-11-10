@@ -91,12 +91,52 @@ pub struct Positions {
     pub supply: Map<u32, i128>,
 }
 
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ReserveConfig {
+    pub index: u32,
+    pub decimals: u32,
+    pub c_factor: u32,
+    pub l_factor: u32,
+    pub util: u32,
+    pub max_util: u32,
+    pub r_base: u32,
+    pub r_one: u32,
+    pub r_two: u32,
+    pub r_three: u32,
+    pub reactivity: u32,
+    pub supply_cap: i128,
+    pub enabled: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ReserveData {
+    pub d_rate: i128,
+    pub b_rate: i128,
+    pub ir_mod: i128,
+    pub b_supply: i128,
+    pub d_supply: i128,
+    pub backstop_credit: i128,
+    pub last_time: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct Reserve {
+    pub asset: Address,
+    pub config: ReserveConfig,
+    pub data: ReserveData,
+    pub scalar: i128,
+}
+
 // Request types for Blend pool interactions
 // Using SupplyCollateral/WithdrawCollateral instead of Supply/Withdraw
 // This deposits funds as collateral (positions.collateral) which still earns interest
 // but provides flexibility to borrow if needed in the future
 const REQUEST_TYPE_SUPPLY_COLLATERAL: u32 = 2;
 const REQUEST_TYPE_WITHDRAW_COLLATERAL: u32 = 3;
+pub(crate) const BLEND_RATE_SCALAR: i128 = 1_000_000_000_000;
 
 // Blend Pool contract client interface
 #[contractclient(name = "BlendPoolClient")]
@@ -110,6 +150,7 @@ pub trait BlendPoolInterface {
     ) -> Positions;
     fn get_positions(env: Env, address: Address) -> Positions;
     fn claim(env: Env, from: Address, reserve_token_ids: Vec<u32>, to: Address) -> i128;
+    fn get_reserve(env: Env, asset: Address) -> Reserve;
 }
 
 // Comet Pool contract client interface for BLND-USDC swaps
@@ -292,7 +333,11 @@ impl BlendVaultContract {
         reserve_ids.push_back(blnd_index);
 
         let blnd_claimed = pool_client.claim(&vault_address, &reserve_ids, &vault_address);
-        
+
+        if blnd_claimed <= 0 {
+            return 0;
+        }
+
         // Step 2: Swap BLND for USDC on Comet
         let comet_client = CometPoolClient::new(e, &comet_pool);
 
@@ -329,6 +374,27 @@ impl BlendVaultContract {
             &blnd_claimed,
             &expiration_ledger,
         );
+
+        // Authorize the upcoming swap call so the vault can satisfy Comet's auth checks
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: comet_pool.clone(),
+                    fn_name: Symbol::new(e, "swap_exact_amount_in"),
+                    args: (
+                        blnd_token.clone(),
+                        blnd_claimed,
+                        usdc_token.clone(),
+                        0i128,
+                        i128::MAX,
+                        vault_address.clone(),
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         // Call swap on Comet pool
         // min_amount_out = 0 for now (can be improved with price oracle)
@@ -448,17 +514,21 @@ impl FungibleVault for BlendVaultContract {
         let pool_address = Self::get_blend_pool(e);
         let usdc_index = Self::get_usdc_reserve_index(e);
         let vault_address = e.current_contract_address();
+        let asset = Vault::query_asset(e);
 
-        // Create pool client to query positions
         let pool_client = BlendPoolClient::new(e, &pool_address);
-
-        // Get the vault's positions in the Blend pool
         let positions = pool_client.get_positions(&vault_address);
+        let collateral_b_tokens = positions.collateral.get(usdc_index).unwrap_or(0);
 
-        // Return the collateral amount for USDC (our underlying asset)
-        // The collateral map uses the reserve index as key
-        // We use collateral instead of supply because we deposit using SupplyCollateral (type 2)
-        positions.collateral.get(usdc_index).unwrap_or(0)
+        if collateral_b_tokens == 0 {
+            return 0;
+        }
+
+        let reserve = pool_client.get_reserve(&asset);
+        let pool_assets = collateral_b_tokens
+            .checked_mul(reserve.data.b_rate)
+            .unwrap_or_else(|| panic!("Blend collateral overflow"));
+        pool_assets / BLEND_RATE_SCALAR
     }
 
     fn convert_to_shares(e: &Env, assets: i128) -> i128 {

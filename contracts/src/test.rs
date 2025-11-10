@@ -1,7 +1,7 @@
 use super::*;
-use crate::mocks::{MockBlendPool, MockCometPool, RealisticMockBlendPool};
+use crate::mocks::{MockBlendPool, MockBlendPoolClient, MockCometPool, RealisticMockBlendPool};
 use sep_41_token::testutils::{MockTokenClient, MockTokenWASM};
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, String as SorobanString};
+use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
 
 // Test fixture structure
 struct TestFixture<'a> {
@@ -403,6 +403,25 @@ fn test_convert_to_assets() {
     // Convert back
     let assets = fixture.vault_client.convert_to_assets(&shares);
     assert_eq!(assets, deposit_amount);
+}
+
+#[test]
+fn test_total_assets_reflects_b_rate_growth() {
+    let fixture = TestFixture::new();
+    let deposit_amount = 1000_0000000;
+
+    fixture
+        .vault_client
+        .mock_all_auths()
+        .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    // Simulate yield by increasing the Blend reserve b_rate
+    let mock_pool_client = MockBlendPoolClient::new(&fixture.env, &fixture.blend_pool);
+    let boosted_rate = crate::BLEND_RATE_SCALAR + 100_000_000_000; // ~10% increase
+    mock_pool_client.set_b_rate(&fixture.usdc_token, &boosted_rate);
+
+    let expected_assets = deposit_amount * boosted_rate / crate::BLEND_RATE_SCALAR;
+    assert_eq!(fixture.vault_client.total_assets(), expected_assets);
 }
 
 #[test]
@@ -1662,7 +1681,8 @@ fn test_preview_functions_match_actual() {
 // These tests use the actual Blend protocol contracts (via WASM) instead of simple mocks
 // This provides more accurate testing against the real pool behavior
 
-use crate::mocks::{contracts::pool, default_reserve_config, BlendFixture};
+use crate::mocks::{default_reserve_config, BlendFixture};
+use blend_contract_sdk::pool;
 use soroban_sdk::{testutils::BytesN as _, BytesN, String};
 
 /// Test fixture that uses real Blend and Comet pools
@@ -1689,16 +1709,25 @@ impl<'a> RealBlendTestFixture<'a> {
         let deployer = Address::generate(&env);
         let user = Address::generate(&env);
 
-        // Deploy USDC and BLND tokens
-        let usdc_token = env
-            .register_stellar_asset_contract_v2(deployer.clone())
-            .address();
+        // Deploy USDC token
+        let usdc_token = env.register_contract_wasm(None, MockTokenWASM);
         let usdc_client = MockTokenClient::new(&env, &usdc_token);
+        usdc_client.initialize(
+            &deployer,
+            &7,
+            &SorobanString::from_str(&env, "USD Coin"),
+            &SorobanString::from_str(&env, "USDC"),
+        );
 
-        let blnd_token = env
-            .register_stellar_asset_contract_v2(deployer.clone())
-            .address();
+        // Deploy BLND token
+        let blnd_token = env.register_contract_wasm(None, MockTokenWASM);
         let blnd_client = MockTokenClient::new(&env, &blnd_token);
+        blnd_client.initialize(
+            &deployer,
+            &7,
+            &SorobanString::from_str(&env, "Blend Token"),
+            &SorobanString::from_str(&env, "BLND"),
+        );
 
         // Deploy the full Blend protocol using the fixture
         let blend_fixture = BlendFixture::deploy(&env, &deployer, &blnd_token, &usdc_token);
@@ -1754,12 +1783,8 @@ impl<'a> RealBlendTestFixture<'a> {
 
         // Mint tokens to user
         usdc_client.mint(&user, &1_000_000_0000000);
+        usdc_client.mint(&blend_pool, &1_000_000_0000000);
         blnd_client.mint(&user, &1_000_000_0000000);
-
-        // Fund the pool with USDC for withdrawals using StellarAssetClient
-        // The real Blend pool uses Stellar assets, so we need to mint properly
-        let usdc_stellar_client = StellarAssetClient::new(&env, &usdc_token);
-        usdc_stellar_client.mock_all_auths().mint(&blend_pool, &100_000_000_0000000);
 
         // Pre-approve vault
         usdc_client.approve(&user, &vault, &i128::MAX, &200);
@@ -1810,24 +1835,8 @@ fn test_deposit_with_real_blend_pool() {
     assert_eq!(fixture.vault_client.total_assets(), deposit_amount);
 }
 
-// This test demonstrates that withdrawals work with the real Blend pool's accounting,
-// but fail in the test environment due to token transfer limitations.
-//
-// The issue: The real Blend pool uses reserve managers and internal accounting that
-// don't directly hold transferable token balances in the pool's contract address.
-// When the pool tries to transfer tokens back during withdrawal, it fails with
-// InsufficientBalance because the test environment doesn't have the full reserve
-// infrastructure.
-//
-// Evidence that the contract logic is correct:
-// 1. Deposits work perfectly with the real pool (test_deposit_with_real_blend_pool passes)
-// 2. The pool correctly updates positions (event logs show proper accounting)
-// 3. All 52 mock-based tests pass, proving the withdrawal logic is sound
-// 4. The contract will work correctly on mainnet where the full infrastructure exists
-//
-// This is a test environment limitation, not a contract bug.
 #[test]
-#[ignore]
+#[ignore = "Blend fixture withdraw still fails with contract error 100; needs follow-up once pool auth flow is replicated locally"]
 fn test_withdraw_with_real_blend_pool() {
     let fixture = RealBlendTestFixture::new();
     let deposit_amount = 5000_0000000;
@@ -1836,6 +1845,11 @@ fn test_withdraw_with_real_blend_pool() {
     let shares = fixture
         .vault_client
         .deposit(&deposit_amount, &fixture.user, &fixture.user, &fixture.user);
+
+    assert_eq!(
+        fixture.usdc_client.balance(&fixture.blend_pool),
+        deposit_amount
+    );
 
     // Then withdraw half
     let withdraw_amount = 2500_0000000;
