@@ -1,16 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { BalanceDisplay } from './BalanceDisplay';
 import { ActionButton } from './ActionButton';
 import * as USDCContract from '../contracts/usdc';
 import * as VaultContract from '../contracts/vault';
 import { parseUSDC, formatUSDC } from '../utils/format';
+import { useVaultRewards } from '../hooks/useVaultRewards';
 import './VaultInterface.css';
 
 interface VaultInterfaceProps {
   userAddress: string;
   isConnected: boolean;
 }
+
+const MIN_COMPOUND_BLND = 0.0001;
+
+const formatBlndAmount = (value: number): string => {
+  const absValue = Math.abs(value);
+  const maximumFractionDigits = absValue < 1 ? 4 : 2;
+  const minimumFractionDigits = value === 0 ? 0 : absValue < 1 ? 2 : 0;
+
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  });
+};
 
 export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isConnected }) => {
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
@@ -23,6 +37,20 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
   const [isCompounding, setIsCompounding] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const {
+    pendingBlnd,
+    isLoading: isLoadingPendingBlnd,
+    error: pendingBlndError,
+    refresh: refreshPendingBlnd,
+  } = useVaultRewards({ enabled: isConnected });
+  const hasCompoundableRewards = useMemo(
+    () =>
+      !isLoadingPendingBlnd &&
+      pendingBlnd !== null &&
+      !pendingBlndError &&
+      pendingBlnd >= MIN_COMPOUND_BLND,
+    [isLoadingPendingBlnd, pendingBlnd, pendingBlndError]
+  );
 
   // Fetch balances
   const fetchBalances = async () => {
@@ -194,6 +222,11 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
   };
 
   const handleCompound = async () => {
+    if (!hasCompoundableRewards) {
+      toast.error('Not enough BLND to compound yet (need at least 0.0001 BLND).');
+      return;
+    }
+
     setIsCompounding(true);
     try {
       const txHash = await VaultContract.compound(userAddress);
@@ -211,6 +244,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
         </div>
       );
       await fetchBalances();
+      await refreshPendingBlnd(false);
     } catch (error: any) {
       console.error('Compound error:', error);
       if (error.message?.includes('User declined')) {
@@ -264,6 +298,15 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
   }
 
   const needsApproval = !!depositAmount && parseUSDC(depositAmount) > allowance;
+  const pendingBlndDisplay = useMemo(() => {
+    if (isLoadingPendingBlnd) {
+      return 'Loading...';
+    }
+    if (pendingBlndError || pendingBlnd === null) {
+      return '--';
+    }
+    return `${formatBlndAmount(pendingBlnd)} BLND`;
+  }, [isLoadingPendingBlnd, pendingBlndError, pendingBlnd]);
 
   return (
     <div className="vault-interface">
@@ -354,10 +397,24 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
             <p className="action-description">
               Compound BLND rewards back in to the USDC vault
             </p>
+            <div className="pending-blnd-card">
+              <div className="pending-blnd-details">
+                <span className="pending-blnd-label">BLND ready to compound</span>
+                <span className="pending-blnd-value">{pendingBlndDisplay}</span>
+              </div>
+              {!isLoadingPendingBlnd && pendingBlndError && (
+                <span className="pending-blnd-error">Unable to load BLND rewards.</span>
+              )}
+              {!pendingBlndError && !isLoadingPendingBlnd && pendingBlnd !== null && pendingBlnd < MIN_COMPOUND_BLND && (
+                <span className="pending-blnd-warning">
+                  Not enough BLND to compound yet (need ≥ 0.0001 BLND).
+                </span>
+              )}
+            </div>
             <ActionButton
               onClick={handleCompound}
               isLoading={isCompounding}
-              disabled={isApproving || isDepositing || isWithdrawing}
+              disabled={isApproving || isDepositing || isWithdrawing || !hasCompoundableRewards}
             >
               Compound
             </ActionButton>

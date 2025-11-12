@@ -61,6 +61,54 @@
   margin-top: 1rem;
 }
 
+.pending-blnd-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #191b1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pending-blnd-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pending-blnd-label {
+  font-size: 0.875rem;
+  font-family: "DM Sans", Roboto;
+  font-weight: 600;
+  color: #979797;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pending-blnd-value {
+  font-size: 1.25rem;
+  font-family: Audiowide, "DM Sans", Roboto;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.pending-blnd-error {
+  font-size: 0.8125rem;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #ff7b7b;
+}
+
+.pending-blnd-warning {
+  font-size: 0.8125rem;
+  font-family: "DM Sans", Roboto;
+  font-weight: 500;
+  color: #ffb347;
+}
+
 .action-title {
   font-size: 1.125rem;
   font-weight: 500;
