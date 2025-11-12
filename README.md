@@ -2,6 +2,12 @@
 
 A Soroban smart contract that implements an ERC-4626 compliant vault for depositing USDC into Blend Protocol's Yield Box Pool v2 on Stellar.
 
+BLND rewards are compounded by swapping for USDC and redepositing in the vault.
+
+Demo: https://jamesbachini.github.io/Blend-Vault/
+
+Note this is on mainnet but it is not production ready. Don't deposit more than $1 and expect never to see it again as the project is under development.
+
 ## Test & Build Commands
 
 ```bash
