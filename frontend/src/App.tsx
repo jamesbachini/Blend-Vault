@@ -9,6 +9,8 @@ import { StatsBar } from './components/StatsBar';
 import { VAULT_CONTRACT_ID } from './utils/stellar';
 import './App.css';
 
+const vaultIconSrc = new URL('vault-icon.svg', import.meta.env.BASE_URL).toString();
+
 // Initialize Stellar Wallets Kit
 StellarWalletsKit.init({
   theme: SwkAppDarkTheme,
@@ -71,7 +73,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="logo">
-            <img src="/vault-icon.svg" alt="Blend Vault" style={{ height: '32px', width: 'auto' }} />
+            <img src={vaultIconSrc} alt="Blend Vault" style={{ height: '32px', width: 'auto' }} />
             <div className="logo-text">
               <h1>BLEND VAULT</h1>
               <p>USDC YIELD STRATEGY</p>

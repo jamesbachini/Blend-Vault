@@ -352,7 +352,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
           <div className="compound-section">
             <h3 className="action-title">Compound</h3>
             <p className="action-description">
-              Compound your BLND rewards back in to the USDC vault
+              Compound BLND rewards back in to the USDC vault
             </p>
             <ActionButton
               onClick={handleCompound}
