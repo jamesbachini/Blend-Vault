@@ -4,6 +4,7 @@ import {
   BLEND_POOL_CONTRACT_ID,
   NETWORK_PASSPHRASE,
   SOROBAN_RPC_URL,
+  USDC_CONTRACT_ID,
   VAULT_CONTRACT_ID,
 } from '../utils/stellar';
 
@@ -60,13 +61,27 @@ export function useVaultRewards({
 
       try {
         const pool = await PoolV2.load(NETWORK, BLEND_POOL_CONTRACT_ID);
+        const usdcReserve = pool.reserves.get(USDC_CONTRACT_ID);
+
+        if (!usdcReserve) {
+          throw new Error('USDC reserve not found in Blend pool');
+        }
+
+        const singleReservePool = new PoolV2(
+          pool.network,
+          pool.id,
+          pool.metadata,
+          new Map([[USDC_CONTRACT_ID, usdcReserve]]),
+          pool.timestamp
+        );
+
         const poolUser = await PoolUser.load(
           NETWORK,
           BLEND_POOL_CONTRACT_ID,
-          pool,
+          singleReservePool,
           VAULT_CONTRACT_ID
         );
-        const { emissions } = poolUser.estimateEmissions(Array.from(pool.reserves.values()));
+        const { emissions } = poolUser.estimateEmissions([usdcReserve]);
 
         if (!isMountedRef.current) {
           return;
@@ -82,11 +97,27 @@ export function useVaultRewards({
         if (!isMountedRef.current) {
           return;
         }
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load BLND rewards',
-        }));
+
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to load BLND rewards';
+        const isMissingPosition =
+          errorMessage.includes('Unable to load user') ||
+          errorMessage.includes('Unable to load reserve') ||
+          errorMessage.includes('missing ledger entries');
+
+        if (isMissingPosition) {
+          setState({
+            pendingBlnd: 0,
+            isLoading: false,
+            error: undefined,
+          });
+        } else {
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: errorMessage,
+          }));
+        }
       }
     },
     [enabled]

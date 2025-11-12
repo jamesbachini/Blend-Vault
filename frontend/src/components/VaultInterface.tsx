@@ -47,9 +47,8 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     () =>
       !isLoadingPendingBlnd &&
       pendingBlnd !== null &&
-      !pendingBlndError &&
       pendingBlnd >= MIN_COMPOUND_BLND,
-    [isLoadingPendingBlnd, pendingBlnd, pendingBlndError]
+    [isLoadingPendingBlnd, pendingBlnd]
   );
 
   // Fetch balances
@@ -222,7 +221,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
   };
 
   const handleCompound = async () => {
-    if (!hasCompoundableRewards) {
+    if (pendingBlnd !== null && !hasCompoundableRewards) {
       toast.error('Not enough BLND to compound yet (need at least 0.0001 BLND).');
       return;
     }
@@ -282,6 +281,17 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     }
   };
 
+  const needsApproval = !!depositAmount && parseUSDC(depositAmount) > allowance;
+  const pendingBlndDisplay = useMemo(() => {
+    if (isLoadingPendingBlnd) {
+      return 'Loading...';
+    }
+    if (pendingBlnd === null) {
+      return '--';
+    }
+    return `${formatBlndAmount(pendingBlnd)} BLND`;
+  }, [isLoadingPendingBlnd, pendingBlnd]);
+
   if (!isConnected) {
     return (
       <div className="vault-interface">
@@ -296,17 +306,6 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       </div>
     );
   }
-
-  const needsApproval = !!depositAmount && parseUSDC(depositAmount) > allowance;
-  const pendingBlndDisplay = useMemo(() => {
-    if (isLoadingPendingBlnd) {
-      return 'Loading...';
-    }
-    if (pendingBlndError || pendingBlnd === null) {
-      return '--';
-    }
-    return `${formatBlndAmount(pendingBlnd)} BLND`;
-  }, [isLoadingPendingBlnd, pendingBlndError, pendingBlnd]);
 
   return (
     <div className="vault-interface">
@@ -414,7 +413,12 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
             <ActionButton
               onClick={handleCompound}
               isLoading={isCompounding}
-              disabled={isApproving || isDepositing || isWithdrawing || !hasCompoundableRewards}
+              disabled={
+                isApproving ||
+                isDepositing ||
+                isWithdrawing ||
+                (pendingBlnd !== null && !hasCompoundableRewards)
+              }
             >
               Compound
             </ActionButton>
