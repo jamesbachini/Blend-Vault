@@ -367,28 +367,43 @@ impl BlendVaultContract {
             &expiration_ledger,
         );
 
-        // Authorize the upcoming swap call so the vault can satisfy Comet's auth checks
-        if !cfg!(test) {
-            e.authorize_as_current_contract(vec![
-                e,
-                InvokerContractAuthEntry::Contract(SubContractInvocation {
-                    context: ContractContext {
-                        contract: comet_pool.clone(),
-                        fn_name: Symbol::new(e, "swap_exact_amount_in"),
-                        args: (
-                            blnd_token.clone(),
-                            blnd_claimed,
-                            usdc_token.clone(),
-                            0i128,
-                            i128::MAX,
-                            vault_address.clone(),
-                        )
-                            .into_val(e),
-                    },
-                    sub_invocations: vec![e],
-                }),
-            ]);
-        }
+        // The Comet pool internally calls `pull_underlying`, which in turn calls
+        // `approve` and `transfer_from` on the BLND token with the vault address
+        // as the authorizer. Pre-authorize those nested calls so Comet can pull
+        // the claimed BLND without tripping InvalidAction on mainnet.
+        let comet_allowance_ledger =
+            ((e.ledger().sequence() / 100000) + 1) * 100000; // matches Comet rounding
+        e.authorize_as_current_contract(vec![
+            e,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: blnd_token.clone(),
+                    fn_name: Symbol::new(e, "approve"),
+                    args: (
+                        vault_address.clone(),
+                        comet_pool.clone(),
+                        blnd_claimed,
+                        comet_allowance_ledger,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: blnd_token.clone(),
+                    fn_name: Symbol::new(e, "transfer_from"),
+                    args: (
+                        comet_pool.clone(),
+                        vault_address.clone(),
+                        comet_pool.clone(),
+                        blnd_claimed,
+                    )
+                        .into_val(e),
+                },
+                sub_invocations: vec![e],
+            }),
+        ]);
 
         // Call swap on Comet pool
         // min_amount_out = 0 for now (can be improved with price oracle)
