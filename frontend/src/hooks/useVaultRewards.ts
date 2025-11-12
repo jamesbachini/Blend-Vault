@@ -67,21 +67,19 @@ export function useVaultRewards({
           throw new Error('USDC reserve not found in Blend pool');
         }
 
-        const singleReservePool = new PoolV2(
-          pool.network,
-          pool.id,
-          pool.metadata,
-          new Map([[USDC_CONTRACT_ID, usdcReserve]]),
-          pool.timestamp
-        );
-
         const poolUser = await PoolUser.load(
           NETWORK,
           BLEND_POOL_CONTRACT_ID,
-          singleReservePool,
+          pool,
           VAULT_CONTRACT_ID
         );
-        const { emissions } = poolUser.estimateEmissions([usdcReserve]);
+
+        const reservesForEmission = usdcReserve ? [usdcReserve] : Array.from(pool.reserves.values());
+        const { emissions } = poolUser.estimateEmissions(reservesForEmission);
+
+        if (import.meta.env.DEV) {
+          console.debug('[BlendVault] Pending BLND rewards', emissions);
+        }
 
         if (!isMountedRef.current) {
           return;
