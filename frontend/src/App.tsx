@@ -9,7 +9,7 @@ import { StatsBar } from './components/StatsBar';
 import { VAULT_CONTRACT_ID } from './utils/stellar';
 import './App.css';
 
-const vaultIconSrc = new URL('vault-icon.svg', import.meta.env.BASE_URL).toString();
+const vaultIconSrc = `${import.meta.env.BASE_URL || '/'}vault-icon.svg`;
 
 // Initialize Stellar Wallets Kit
 StellarWalletsKit.init({

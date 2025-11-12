@@ -8,11 +8,24 @@ Demo: https://jamesbachini.github.io/Blend-Vault/
 
 Note this is on mainnet but it is not production ready. Don't deposit more than $1 and expect never to see it again as the project is under development.
 
-## Test & Build Commands
+## Contract Test & Build Commands
+
+Using nextest for unit tests as some of them are sloooooow. From there deploy to mainnet with ./deploy.sh
 
 ```bash
-cargo test --target x86_64-unknown-linux-gnu
+cargo nextest run --target x86_64-unknown-linux-gnu --no-fail-fast
 cargo build --release --target wasm32-unknown-unknown
+./deploy.sh
+```
+
+# Frontend build
+
+This will build the frontend out to docs/ to host on Github pages.
+
+```bash
+cd frontend
+npm install
+npx vite build
 ```
 
 ## Overview
@@ -22,6 +35,7 @@ This vault contract allows users to:
 - Automatically supply deposited USDC to Blend Protocol's pool for yield generation
 - Withdraw USDC plus accrued yield by redeeming vault shares
 - Track their proportional share of the growing pool
+- Compound BLND rewards back into the vault via a BLND>USDC swap using Comet DeX
 
 ## Architecture
 
@@ -242,4 +256,4 @@ MIT License - see LICENSE file for details
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request.
+Contributions are optional but appreciated ♥️
