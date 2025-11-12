@@ -57,7 +57,7 @@ a {
 
 .logo-text h1 {
   margin: 0px 0px 0px 6px;
-  font-family: "DM Sans", Roboto;
+  font-family: Audiowide, "DM Sans", Roboto;
   font-weight: bold;
   font-size: 1.25rem;
   line-height: 1.473;
@@ -91,12 +91,12 @@ a {
 }
 
 .intro-section h2 {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 500;
   color: #FFFFFF;
   margin-bottom: 1rem;
   line-height: 1.2;
-  font-family: "DM Sans", Roboto;
+  font-family: Audiowide, "DM Sans", Roboto;
 }
 
 .intro-section p {
