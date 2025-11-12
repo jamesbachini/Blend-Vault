@@ -20,6 +20,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
   const [isApproving, setIsApproving] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isCompounding, setIsCompounding] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
 
@@ -192,6 +193,36 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     }
   };
 
+  const handleCompound = async () => {
+    setIsCompounding(true);
+    try {
+      const txHash = await VaultContract.compound(userAddress);
+      toast.success(
+        <div>
+          Compound successful!{' '}
+          <a
+            href={`https://stellar.expert/explorer/public/tx/${txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: 'underline' }}
+          >
+            View transaction
+          </a>
+        </div>
+      );
+      await fetchBalances();
+    } catch (error: any) {
+      console.error('Compound error:', error);
+      if (error.message?.includes('User declined')) {
+        toast.error('Transaction was cancelled');
+      } else {
+        toast.error(`Compound failed: ${error.message || 'Unknown error'}`);
+      }
+    } finally {
+      setIsCompounding(false);
+    }
+  };
+
   const setMaxDeposit = () => {
     if (walletBalance !== null) {
       setDepositAmount(formatUSDC(walletBalance));
@@ -269,7 +300,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
               <ActionButton
                 onClick={handleApprove}
                 isLoading={isApproving}
-                disabled={isDepositing || isWithdrawing}
+                disabled={isDepositing || isWithdrawing || isCompounding}
                 variant="secondary"
               >
                 Approve USDC
@@ -278,7 +309,9 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
             <ActionButton
               onClick={handleDeposit}
               isLoading={isDepositing}
-              disabled={isApproving || isWithdrawing || !depositAmount || needsApproval}
+              disabled={
+                isApproving || isWithdrawing || isCompounding || !depositAmount || needsApproval
+              }
             >
               Deposit
             </ActionButton>
@@ -311,10 +344,24 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
           <ActionButton
             onClick={handleWithdraw}
             isLoading={isWithdrawing}
-            disabled={isApproving || isDepositing || !withdrawAmount}
+            disabled={isApproving || isDepositing || isCompounding || !withdrawAmount}
           >
             Withdraw
           </ActionButton>
+
+          <div className="compound-section">
+            <h3 className="action-title">Compound</h3>
+            <p className="action-description">
+              Compound your BLND rewards back in to the USDC vault
+            </p>
+            <ActionButton
+              onClick={handleCompound}
+              isLoading={isCompounding}
+              disabled={isApproving || isDepositing || isWithdrawing}
+            >
+              Compound
+            </ActionButton>
+          </div>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { SwkAppDarkTheme, KitEventType } from '@creit-tech/stellar-wallets-kit/t
 import { defaultModules } from '@creit-tech/stellar-wallets-kit/modules/utils';
 import { ConnectButton } from './components/ConnectButton';
 import { VaultInterface } from './components/VaultInterface';
+import { StatsBar } from './components/StatsBar';
 import { VAULT_CONTRACT_ID } from './utils/stellar';
 import './App.css';
 
@@ -81,15 +82,14 @@ function App() {
         </div>
       </header>
 
+      <StatsBar />
+
       <main className="app-main">
         <div className="main-content">
           <div className="intro-section">
             <h2>USDC AUTO-COMPOUNDING VAULT</h2>
             <p>
-              Deposit USDC on Stellar to earn yield through Blend's <a href="https://mainnet.blend.capital/dashboard/?poolId=CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS" target="_blank">Yield Box</a> Pool
-            </p>
-            <p>
-              BLND rewards are automatically swapped to USDC &amp; reinvested
+              Deposit USDC on Stellar to compound yield through Blend's <a href="https://mainnet.blend.capital/dashboard/?poolId=CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS" target="_blank">Yield Box</a> Pool
             </p>
           </div>
 

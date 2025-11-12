@@ -47,3 +47,34 @@ export function formatUSDCWithCommas(amount: bigint): string {
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return parts.join('.');
 }
+
+export function formatPercentage(value: number | null, decimals = 2): string {
+  if (value === null || Number.isNaN(value) || !Number.isFinite(value)) {
+    return '--';
+  }
+  return `${value.toFixed(decimals)}%`;
+}
+
+interface FormatUsdOptions {
+  compact?: boolean;
+  maximumFractionDigits?: number;
+}
+
+export function formatUsd(value: number | null, options: FormatUsdOptions = {}): string {
+  if (value === null || Number.isNaN(value) || !Number.isFinite(value)) {
+    return '--';
+  }
+
+  const { compact = false, maximumFractionDigits } = options;
+  const defaultMaxDigits = value < 1 ? 2 : 2;
+  const maxDigits = maximumFractionDigits ?? defaultMaxDigits;
+  const minDigits = value < 1 ? Math.min(2, maxDigits) : 0;
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: compact ? 'compact' : 'standard',
+    maximumFractionDigits: maxDigits,
+    minimumFractionDigits: minDigits,
+  }).format(value);
+}

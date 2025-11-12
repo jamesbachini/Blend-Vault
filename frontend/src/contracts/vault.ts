@@ -175,6 +175,24 @@ export async function withdraw(assets: bigint, userAddress: string): Promise<str
 }
 
 /**
+ * Compound BLND rewards back into the vault
+ */
+export async function compound(userAddress: string): Promise<string> {
+  const tx = await buildAndSimulateTransaction(userAddress, vaultContract, 'compound', [
+    addressToScVal(userAddress),
+  ]);
+
+  const txXdr = tx.toEnvelope().toXDR('base64');
+
+  const { signedTxXdr } = await StellarWalletsKit.signTransaction(txXdr, {
+    networkPassphrase: NETWORK_PASSPHRASE,
+    address: userAddress,
+  });
+
+  return await submitTransaction(signedTxXdr);
+}
+
+/**
  * Redeem shares for USDC (alternative to withdraw)
  * Only use this if you want to redeem a specific number of shares
  */

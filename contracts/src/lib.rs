@@ -477,16 +477,6 @@ impl BlendVaultContract {
         usdc_received
     }
 
-    /// Try to compound rewards, but don't fail if there are no rewards
-    /// This is a safety wrapper used before withdrawals
-    #[allow(dead_code)]
-    fn try_compound(e: &Env, operator: Address) {
-        // Use a Result-like pattern with panic catching via environmental context
-        // In Soroban, we can't easily catch panics, so we'll just call compound
-        // The compound function already returns 0 if no rewards, so it won't panic
-        let _ = Self::compound(e, operator);
-    }
-
     /// Get a snapshot of all depositors and their current token balances
     ///
     /// Returns a Map of Address -> Balance (in vault share tokens)

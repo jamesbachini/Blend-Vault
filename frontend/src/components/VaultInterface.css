@@ -50,6 +50,17 @@
   margin-bottom: 0;
 }
 
+.compound-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.compound-section .action-button {
+  width: 100%;
+  margin-top: 1rem;
+}
+
 .action-title {
   font-size: 1.125rem;
   font-weight: 500;

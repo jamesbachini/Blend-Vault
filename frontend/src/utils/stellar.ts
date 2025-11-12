@@ -8,6 +8,7 @@ export const SOROBAN_RPC_URL = 'https://rpc.lightsail.network/';
 // Contract addresses
 export const VAULT_CONTRACT_ID = 'CDNEXSPHV7PNY67HDAX5ECGIDLRK5YEOFQZIJPGGSRUJSPOGMH4QFXNB';
 export const USDC_CONTRACT_ID = 'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75'; // Stellar USDC on mainnet
+export const BLEND_POOL_CONTRACT_ID = 'CCCCIQSDILITHMM7PBSLVDT5MISSY7R26MNZXCX4H7J5JQ5FPIYOGYFS';
 
 // Initialize Soroban server
 export const sorobanServer = new StellarSdk.rpc.Server(SOROBAN_RPC_URL);
