@@ -6,6 +6,7 @@ import { ActionButton } from './ActionButton';
 import * as USDCContract from '../contracts/usdc';
 import * as VaultContract from '../contracts/vault';
 import { parseUSDC, formatUSDC } from '../utils/format';
+import { TransactionTimeoutError } from '../utils/stellar';
 import { useVaultRewards } from '../hooks/useVaultRewards';
 import './VaultInterface.css';
 
@@ -51,6 +52,16 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       pendingBlnd >= MIN_COMPOUND_BLND,
     [isLoadingPendingBlnd, pendingBlnd]
   );
+
+  const showTransactionError = (action: string, error: any) => {
+    if (error instanceof TransactionTimeoutError) {
+      toast.error(error.message);
+    } else if (error.message?.includes('User declined')) {
+      toast.error('Transaction was cancelled');
+    } else {
+      toast.error(`${action} failed: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   // Fetch balances
   const fetchBalances = async () => {
@@ -117,11 +128,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       setAllowance(newAllowance);
     } catch (error: any) {
       console.error('Approval error:', error);
-      if (error.message?.includes('User declined')) {
-        toast.error('Transaction was cancelled');
-      } else {
-        toast.error(`Approval failed: ${error.message || 'Unknown error'}`);
-      }
+      showTransactionError('Approval', error);
     } finally {
       setIsApproving(false);
     }
@@ -165,11 +172,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       await fetchBalances();
     } catch (error: any) {
       console.error('Deposit error:', error);
-      if (error.message?.includes('User declined')) {
-        toast.error('Transaction was cancelled');
-      } else {
-        toast.error(`Deposit failed: ${error.message || 'Unknown error'}`);
-      }
+      showTransactionError('Deposit', error);
     } finally {
       setIsDepositing(false);
     }
@@ -211,11 +214,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       await fetchBalances();
     } catch (error: any) {
       console.error('Withdraw error:', error);
-      if (error.message?.includes('User declined')) {
-        toast.error('Transaction was cancelled');
-      } else {
-        toast.error(`Withdrawal failed: ${error.message || 'Unknown error'}`);
-      }
+      showTransactionError('Withdrawal', error);
     } finally {
       setIsWithdrawing(false);
     }
@@ -247,11 +246,7 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
       await refreshPendingBlnd(false);
     } catch (error: any) {
       console.error('Compound error:', error);
-      if (error.message?.includes('User declined')) {
-        toast.error('Transaction was cancelled');
-      } else {
-        toast.error(`Compound failed: ${error.message || 'Unknown error'}`);
-      }
+      showTransactionError('Compound', error);
     } finally {
       setIsCompounding(false);
     }

@@ -4,6 +4,14 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 export const NETWORK_PASSPHRASE = StellarSdk.Networks.PUBLIC;
 export const HORIZON_URL = 'https://horizon.stellar.org';
 export const SOROBAN_RPC_URL = 'https://rpc.lightsail.network/';
+export const TRANSACTION_TIMEOUT_MS = 30_000;
+
+export class TransactionTimeoutError extends Error {
+  constructor() {
+    super('Transaction timedout, mainnet must be busy. Please try again');
+    this.name = 'TransactionTimeoutError';
+  }
+}
 
 // Contract addresses
 export const VAULT_CONTRACT_ID = 'CBB3PRLO2R3BLMQCM5ETSGBT4K7724KKRIB7JYDP5PH74L4WMQXASBR6';
@@ -63,7 +71,10 @@ export async function buildAndSimulateTransaction(
 }
 
 // Submit transaction after signing
-export async function submitTransaction(signedXdr: string): Promise<string> {
+export async function submitTransaction(
+  signedXdr: string,
+  timeoutMs: number = TRANSACTION_TIMEOUT_MS
+): Promise<string> {
   const transaction = StellarSdk.TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
 
   let sendResponse = await sorobanServer.sendTransaction(transaction);
@@ -71,15 +82,23 @@ export async function submitTransaction(signedXdr: string): Promise<string> {
   // Store the hash separately since it might not be in the getTransaction response
   const txHash = sendResponse.hash;
 
+  const startTime = Date.now();
+
   // Poll for transaction status
   let getResponse = await sorobanServer.getTransaction(txHash);
   while (getResponse.status === StellarSdk.rpc.Api.GetTransactionStatus.NOT_FOUND) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (Date.now() - startTime >= timeoutMs) {
+      throw new TransactionTimeoutError();
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     getResponse = await sorobanServer.getTransaction(txHash);
   }
 
   if (getResponse.status === StellarSdk.rpc.Api.GetTransactionStatus.SUCCESS) {
     return txHash;
+  } else if (Date.now() - startTime >= timeoutMs) {
+    throw new TransactionTimeoutError();
   } else {
     // Extract detailed error information
     let errorMessage = `Transaction failed: ${getResponse.status}`;
