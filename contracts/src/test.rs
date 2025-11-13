@@ -17,6 +17,8 @@ use soroban_sdk::{
 };
 use std::{fs, path::PathBuf, process::Command, sync::OnceLock};
 
+const EMBEDDED_COMET_WASM: &[u8] = include_bytes!("../test_artifacts/comet_pool.wasm");
+
 const WEEK_IN_SECONDS: u64 = 60 * 60 * 24 * 7;
 const EMITTER_WAIT_SECONDS: u64 = WEEK_IN_SECONDS * 3;
 const BACKSTOP_WAIT_SECONDS: u64 = 60;
@@ -26,18 +28,26 @@ const EMISSION_RETRY_DELAY_SECONDS: u64 = 60 * 60;
 fn comet_wasm_bytes() -> std::vec::Vec<u8> {
     static WASM: OnceLock<std::vec::Vec<u8>> = OnceLock::new();
     WASM.get_or_init(|| {
-        let repo_dir =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.deps/comet-contracts-v1/contracts");
-        let wasm_path = repo_dir.join("target/wasm32-unknown-unknown/release/contracts.wasm");
-        if !wasm_path.exists() {
-            let status = Command::new("cargo")
-                .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
-                .current_dir(&repo_dir)
-                .status()
-                .expect("failed to build Comet contracts");
-            assert!(status.success(), "Comet contracts build failed");
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let comet_repo = repo_root.join(".deps/comet-contracts-v1");
+        let wasm_path = comet_repo
+            .join("target/wasm32-unknown-unknown/release/contracts.wasm");
+
+        if comet_repo.exists() {
+            if !wasm_path.exists() {
+                let status = Command::new("cargo")
+                    .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+                    .current_dir(comet_repo.join("contracts"))
+                    .status()
+                    .expect("failed to build Comet contracts");
+                assert!(status.success(), "Comet contracts build failed");
+            }
+            if let Ok(bytes) = fs::read(&wasm_path) {
+                return bytes;
+            }
         }
-        fs::read(&wasm_path).expect("failed to read Comet wasm")
+
+        EMBEDDED_COMET_WASM.to_vec()
     })
     .clone()
 }

@@ -47,7 +47,8 @@
       "Bash(node:*)",
       "Bash(cargo install:*)",
       "Bash(stellar contract optimize:*)",
-      "WebFetch(domain:mainnet.blend.capital)"
+      "WebFetch(domain:mainnet.blend.capital)",
+      "WebFetch(domain:stellarwalletskit.dev)"
     ],
     "deny": [
       "Bash(stellar contract deploy:*)"

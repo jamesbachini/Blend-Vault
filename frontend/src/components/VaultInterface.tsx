@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { StellarWalletsKit } from '@creit-tech/stellar-wallets-kit/sdk';
 import { BalanceDisplay } from './BalanceDisplay';
 import { ActionButton } from './ActionButton';
 import * as USDCContract from '../contracts/usdc';
@@ -292,15 +293,31 @@ export const VaultInterface: React.FC<VaultInterfaceProps> = ({ userAddress, isC
     return `${formatBlndAmount(pendingBlnd)} BLND`;
   }, [isLoadingPendingBlnd, pendingBlnd]);
 
+  const handleConnectWallet = async () => {
+    try {
+      await StellarWalletsKit.authModal();
+    } catch (error) {
+      // User closed modal or cancelled - this is expected behavior
+      console.log('Wallet connection cancelled');
+    }
+  };
+
   if (!isConnected) {
     return (
       <div className="vault-interface">
         <div className="connect-prompt">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 48 48"
+            fill="none"
+            onClick={handleConnectWallet}
+            style={{ cursor: 'pointer' }}
+          >
             <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="2" />
             <path d="M24 16v16M16 24h16" stroke="currentColor" strokeWidth="2" />
           </svg>
-          <h3>Connect Your Wallet</h3>
+          <h3 onClick={handleConnectWallet} style={{ cursor: 'pointer' }}>Connect Your Wallet</h3>
           <p>Please connect your wallet to interact with the Blend Vault</p>
         </div>
       </div>
