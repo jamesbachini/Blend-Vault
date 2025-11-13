@@ -76,7 +76,7 @@ function App() {
             <img src={vaultIconSrc} alt="Blend Vault" style={{ height: '32px', width: 'auto' }} />
             <div className="logo-text">
               <h1>BLEND VAULT</h1>
-              <p>USDC YIELD STRATEGY</p>
+              <p>USDC YIELD STRATEGY v0.1.2</p>
             </div>
           </div>
 
