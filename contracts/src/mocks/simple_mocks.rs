@@ -162,12 +162,7 @@ impl MockBlendPool {
             })
     }
 
-    pub fn claim(
-        env: Env,
-        _from: Address,
-        _reserve_token_ids: Vec<u32>,
-        to: Address,
-    ) -> i128 {
+    pub fn claim(env: Env, _from: Address, _reserve_token_ids: Vec<u32>, to: Address) -> i128 {
         // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
         let amount = 1000_0000000;
         if let Some(reward_token) = env
@@ -318,12 +313,7 @@ impl RealisticMockBlendPool {
             })
     }
 
-    pub fn claim(
-        env: Env,
-        _from: Address,
-        _reserve_token_ids: Vec<u32>,
-        to: Address,
-    ) -> i128 {
+    pub fn claim(env: Env, _from: Address, _reserve_token_ids: Vec<u32>, to: Address) -> i128 {
         // Mock returns 1000 BLND tokens (with 7 decimals = 0.001 BLND)
         let amount = 1000_0000000;
         if let Some(reward_token) = env
